@@ -7,13 +7,17 @@ export function ChatInput({
   value,
   onChange,
   onSend,
+  onStop,
   disabled,
+  streaming,
   placeholder,
 }: {
   value: string
   onChange: (val: string) => void
   onSend: () => void
+  onStop: () => void
   disabled: boolean
+  streaming: boolean
   placeholder: string
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -40,8 +44,10 @@ export function ChatInput({
         value={value}
         onChange={onChange}
         onSend={onSend}
+        onStop={onStop}
         onClose={() => setFullscreen(false)}
         disabled={disabled}
+        streaming={streaming}
       />
     )
   }
@@ -74,16 +80,30 @@ export function ChatInput({
             </Button>
           )}
         </div>
-        <Button
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-          size="icon"
-          className="min-h-[42px] min-w-[42px]"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12l7-7 7 7M12 19V5" />
-          </svg>
-        </Button>
+        {streaming ? (
+          <Button
+            onClick={onStop}
+            size="icon"
+            className="min-h-[42px] min-w-[42px] bg-red-500 hover:bg-red-600 text-white"
+            title="停止生成"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
+          </Button>
+        ) : (
+          <Button
+            onClick={onSend}
+            disabled={disabled || !value.trim()}
+            size="icon"
+            className="min-h-[42px] min-w-[42px] bg-sky-500 hover:bg-sky-600 text-white"
+            title="发送"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12l7-7 7 7M12 19V5" />
+            </svg>
+          </Button>
+        )}
       </div>
     </div>
   )

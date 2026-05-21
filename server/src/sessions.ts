@@ -45,23 +45,27 @@ function extractSessionTitle(filePath: string): string {
   try {
     const content = readFileSync(filePath, 'utf-8')
     const lines = content.split('\n')
-    const maxLines = Math.min(lines.length, 50)
+    const headerLimit = 50
+    const maxLines = Math.min(lines.length, headerLimit)
 
+    let sessionInfoName: string | null = null
     let firstUserText = ''
 
-    for (let i = 0; i < maxLines; i++) {
+    // 扫描整个文件找 session_info.name（不受行数限制）
+    // 第一条用户消息只在前 headerLimit 行内找（保持性能）
+    for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
       if (!line) continue
       try {
         const entry = JSON.parse(line)
 
-        // 优先：session_info 的 name
+        // 扫描全部行找 session_info.name
         if (entry.type === 'session_info' && entry.name) {
-          return entry.name.trim()
+          sessionInfoName = entry.name.trim()
         }
 
-        // 备选：第一条用户消息
-        if (!firstUserText && entry.type === 'message' && entry.message?.role === 'user' && entry.message?.content) {
+        // 备选：第一条用户消息（仅限前 headerLimit 行）
+        if (i < maxLines && !firstUserText && entry.type === 'message' && entry.message?.role === 'user' && entry.message?.content) {
           const contentArr = Array.isArray(entry.message.content) ? entry.message.content : [entry.message.content]
           for (const part of contentArr) {
             if (part.type === 'text' && part.text) {
@@ -73,6 +77,8 @@ function extractSessionTitle(filePath: string): string {
       } catch { /* skip malformed lines */ }
     }
 
+    // session_info.name 优先
+    if (sessionInfoName) return sessionInfoName
     return firstUserText
   } catch {
     return ''
@@ -196,4 +202,23 @@ export function deleteSessionFiles(sessionFile: string): void {
   // meta.json 可能由其他插件生成，尝试删除但不报错
   const metaPath = fullPath.replace(/\.jsonl$/, '.meta.json')
   if (existsSync(metaPath)) unlinkSync(metaPath)
+}
+
+/** 更新会话标题（追加 session_info 事件到 jsonl） */
+export function renameSession(sessionFile: string, newName: string): boolean {
+  const fullPath = sessionFile.startsWith('/')
+    ? sessionFile
+    : join(SESSION_DIR, sessionFile)
+
+  if (!existsSync(fullPath)) return false
+
+  writeFileSync(fullPath, JSON.stringify({
+    type: 'session_info',
+    id: randomUUID(),
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    name: newName,
+  }) + '\n', { flag: 'a' })
+
+  return true
 }

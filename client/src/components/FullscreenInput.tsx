@@ -5,14 +5,18 @@ export function FullscreenInput({
   value,
   onChange,
   onSend,
+  onStop,
   onClose,
   disabled,
+  streaming,
 }: {
   value: string
   onChange: (val: string) => void
   onSend: () => void
+  onStop: () => void
   onClose: () => void
   disabled: boolean
+  streaming: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -40,9 +44,15 @@ export function FullscreenInput({
         disabled={disabled}
       />
       <div className="p-4 border-t border-zinc-200">
-        <Button onClick={onSend} disabled={disabled || !value.trim()} className="w-full py-3">
-          发送
-        </Button>
+        {streaming ? (
+          <Button onClick={onStop} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white">
+            停止生成
+          </Button>
+        ) : (
+          <Button onClick={onSend} disabled={disabled || !value.trim()} className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white">
+            发送
+          </Button>
+        )}
       </div>
     </div>
   )

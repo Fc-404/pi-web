@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
-import { listSessions, createSessionFile } from './sessions.js'
+import { listSessions, createSessionFile, renameSession } from './sessions.js'
 import { getSessionMessages } from './messages.js'
 import { piPool } from './pi-pool.js'
 
@@ -80,6 +80,18 @@ app.post('/api/sessions/delete', async (c) => {
 // 关闭全部
 app.post('/api/sessions/close-all', async (c) => {
   await piPool.closeAll()
+  return c.json({ success: true })
+})
+
+// 重命名会话
+app.post('/api/sessions/rename', async (c) => {
+  const { sessionFile, name } = await c.req.json()
+  if (!sessionFile) return c.json({ error: 'sessionFile required' }, 400)
+  if (!name || !name.trim()) return c.json({ error: 'name required' }, 400)
+
+  const success = renameSession(sessionFile, name.trim())
+  if (!success) return c.json({ error: 'Session file not found' }, 404)
+
   return c.json({ success: true })
 })
 

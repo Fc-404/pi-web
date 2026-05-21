@@ -125,11 +125,11 @@ function SidebarContent({
       </nav>
 
       {/* 底部按钮 */}
-      <div className="p-3 border-t border-zinc-100 space-y-2">
-        <Button onClick={onNew} variant="secondary" className="w-full">
+      <div className="p-3 border-t border-zinc-100 flex gap-2">
+        <Button onClick={onNew} variant="secondary" className="flex-1">
           + 新建
         </Button>
-        <Button onClick={onCloseAll} variant="ghost" size="sm" className="w-full text-zinc-400 hover:text-red-500">
+        <Button onClick={onCloseAll} variant="ghost" className="text-zinc-400 hover:text-red-500 whitespace-nowrap">
           关闭全部
         </Button>
       </div>
@@ -176,7 +176,7 @@ export function Sidebar({
       {/* 移动端 Sheet */}
       <div className="md:hidden">
         <Sheet open={sidebarOpen} onOpenChange={(open) => { if (!open) onCloseSidebar() }}>
-          <SheetContent side="left" className="w-72 p-0">
+          <SheetContent side="left" className="w-72 p-0" showCloseButton={false}>
             <SidebarContent {...sidebarProps} />
           </SheetContent>
         </Sheet>

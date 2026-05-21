@@ -12,7 +12,9 @@ export function ChatArea({
   input,
   onInputChange,
   onSend,
+  onStop,
   onClose,
+  onRename,
 }: {
   activeStatus?: PoolStatus
   title: string
@@ -22,7 +24,9 @@ export function ChatArea({
   input: string
   onInputChange: (val: string) => void
   onSend: () => void
+  onStop: () => void
   onClose: () => void
+  onRename?: (newName: string) => void
 }) {
   const canSend = activeStatus === 'ready' && !streaming
   const placeholder = activeStatus === 'starting'
@@ -31,7 +35,7 @@ export function ChatArea({
 
   return (
     <>
-      <ChatHeader status={activeStatus} title={title} onClose={onClose} />
+      <ChatHeader status={activeStatus} title={title} onClose={onClose} streaming={streaming} onRename={onRename} />
       <ChatMessages
         messages={messages}
         streaming={streaming}
@@ -42,7 +46,9 @@ export function ChatArea({
         value={input}
         onChange={onInputChange}
         onSend={onSend}
+        onStop={onStop}
         disabled={!canSend}
+        streaming={streaming}
         placeholder={placeholder}
       />
     </>
