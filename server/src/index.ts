@@ -149,6 +149,6 @@ app.post('/api/chat', async (c) => {
 
 // ===== 启动 =====
 
-const PORT = parseInt(process.env.PORT || '3000', 10)
+const PORT = parseInt(process.env.PORT || '9099', 10)
 serve({ fetch: app.fetch, port: PORT })
 console.log(`pi-web server running on http://localhost:${PORT}`)
