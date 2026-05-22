@@ -14,6 +14,7 @@ export type RpcCommand =
   | { type: 'switch_session'; sessionPath: string }
   | { type: 'set_model'; provider: string; modelId: string }
   | { type: 'set_thinking_level'; level: string }
+  | { type: 'compact' }
 
 export interface RpcResponseBase {
   id?: string
@@ -241,5 +242,14 @@ export class RpcClient {
     if (!res.success) {
       throw new Error(`set_thinking_level failed: ${res.error}`)
     }
+  }
+
+  async compact(): Promise<{ summary: string; tokensBefore: number }> {
+    const res = await this.sendCommand({ type: 'compact' })
+    if (!res.success) {
+      throw new Error(`compact failed: ${res.error}`)
+    }
+    const data = res.data as { summary: string; tokensBefore: number } | undefined
+    return { summary: data?.summary || '', tokensBefore: data?.tokensBefore || 0 }
   }
 }

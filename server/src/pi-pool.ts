@@ -1,7 +1,7 @@
 import { RpcClient, type AgentEvent } from './rpc-client.js'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { getMessages, remove, compressMessages, type HistoryMessage } from './session-store.js'
+import { getMessages, remove, type HistoryMessage } from './session-store.js'
 import type { SessionStatus } from '@pi-web/shared'
 
 const SESSION_DIR = join(homedir(), '.pi', 'agent', 'sessions')
@@ -221,7 +221,7 @@ export class PiPool {
   }
 
   /**
-   * 压缩会话上下文：AI 总结历史 + 保留最近消息
+   * 压缩会话上下文：用 pi RPC 内置的 compact 命令
    */
   async compressSession(sessionFile: string): Promise<HistoryMessage[]> {
     const entry = this.pool.get(sessionFile)
@@ -229,47 +229,21 @@ export class PiPool {
       throw new Error('会话未运行')
     }
 
-    // 获取历史消息用于总结（取最近 15 轮对话）
-    const allMessages = getMessages(sessionFile)
-    const recentForSummary = allMessages.slice(-30)
-    
-    // 构造总结 prompt
-    const promptText = `请用简洁的中文总结以下对话的要点，用于后续对话参考上下文：
-\n${recentForSummary.map(m => `[${m.role}] ${(m.content || '').slice(0, 300)}`).join('\n')}`
-
     // 暂停广播，防止压缩过程干扰前端
     this._broadcastSuspended = true
 
     try {
-      // 收集 AI 回复
-      let summary = ''
-      let agentEnded = false
-
-      const unsub = entry.client.onEvent((event) => {
-        if (event.type === 'text_delta') {
-          summary += (event.text as string) || ''
-        } else if (event.type === 'agent_end') {
-          agentEnded = true
-        }
-      })
-
-      await entry.client.prompt(promptText)
-
-      // 等待 agent_end（最多 60 秒）
-      for (let i = 0; i < 300; i++) {
-        if (agentEnded) break
-        await new Promise(r => setTimeout(r, 200))
+      // 直接用 RPC 的 compact 命令
+      const { summary, tokensBefore } = await entry.client.compact()
+      
+      if (!summary) {
+        throw new Error('压缩失败，未收到摘要')
       }
 
-      unsub()
+      console.log(`[压缩] 完成: 压缩前 ${tokensBefore} tokens`)
 
-      if (!summary.trim()) {
-        throw new Error('AI 总结失败，未收到回复')
-      }
-
-      // 用摘要替换历史消息
-      const result = compressMessages(sessionFile, summary.trim(), 20)
-      return result.messages
+      // 重新从文件读取消息
+      return getMessages(sessionFile)
 
     } finally {
       this._broadcastSuspended = false
