@@ -33,7 +33,7 @@ export function LoadingDots({
 
   return (
     <div className={`flex flex-col items-center justify-center ${className}`}>
-      <span className={`inline-flex gap-1.5 ${label ? 'mb-3' : ''}`}>
+      <span className={`inline-flex items-center gap-1.5 ${label ? 'mb-3' : 'h-5'}`}>
         <span className={dotClass} style={{ animationDelay: '0ms' }} />
         <span className={dotClass} style={{ animationDelay: '150ms' }} />
         <span className={dotClass} style={{ animationDelay: '300ms' }} />
