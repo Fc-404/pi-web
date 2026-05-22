@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
+import { LoadingDots } from './LoadingDots'
 import { useChatContext } from '../hooks/useChatContext'
 
 export function ChatMessages() {
@@ -45,17 +46,8 @@ export function ChatMessages() {
         )}
 
         {loading && (
-        <div className="h-full flex items-center justify-center">
-          <div className="text-center">
-            <span className="inline-flex gap-1.5 mb-3">
-              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </span>
-            <p className="text-zinc-400 text-sm">{loadingLabel || '正在加载...'}</p>
-          </div>
-        </div>
-      )}
+          <LoadingDots label={loadingLabel || '正在加载...'} className="h-full" />
+        )}
 
       {!loading && messages.length === 0 && !streaming && (
           <div className="h-full flex items-center justify-center">
@@ -84,11 +76,7 @@ export function ChatMessages() {
         {streaming && (
           <div className="flex justify-start mb-4">
             <div className="bg-zinc-100 rounded-2xl rounded-bl-md px-4 py-3">
-              <span className="inline-flex gap-1">
-                <span className="w-2 h-2 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </span>
+              <LoadingDots size="sm" color="zinc" />
             </div>
           </div>
         )}

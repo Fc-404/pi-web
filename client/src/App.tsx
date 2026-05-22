@@ -10,6 +10,7 @@ import { useChat } from './hooks/useChat'
 import { useSessionManager } from './hooks/useSessionManager'
 import { fetchSessionMessages, fetchSessionMessagesIncremental, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
 import { getSessionCache, setSessionCache } from './lib/db'
+import { LoadingDots } from './components/LoadingDots'
 import { useToast } from './components/Toast'
 import { SettingsPanel } from './components/SettingsPanel'
 
@@ -281,10 +282,7 @@ function App() {
       {/* 新建遮罩 */}
       {creating && (
         <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-zinc-500 text-sm">正在新建会话...</p>
-          </div>
+          <LoadingDots label="正在新建会话..." />
         </div>
       )}
 
