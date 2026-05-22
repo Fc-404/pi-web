@@ -1,8 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { HistoryMessage } from '../lib/api'
+import { readSSEEvents } from '../lib/sse-reader'
 
 /**
  * 聊天消息管理（含 SSE 流式接收 + 消息队列）
+ *
+ * SSE 字节流解析委托给 readSSEEvents，本 hook 专注 React 状态协调。
  */
 export function useChat() {
   const [chatMessages, setChatMessages] = useState<HistoryMessage[]>([])
@@ -10,11 +13,10 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // 消息队列（ref 方式避免闭包问题）
+  // 消息队列（ref 避免闭包问题）
   const pendingQueueRef = useRef<string[]>([])
   const streamingRef = useRef(false)
 
-  // 同步 streaming 到 ref
   useEffect(() => { streamingRef.current = streaming }, [streaming])
 
   const clearMessages = useCallback(() => {
@@ -27,7 +29,7 @@ export function useChat() {
   }, [])
 
   /**
-   * 追加文本或思考到当前 assistant 消息。
+   * 追加文本或思考到当前 assistant 消息
    */
   const appendToAssistant = useCallback((field: 'content' | 'thinking', delta: string) => {
     setChatMessages(prev => {
@@ -47,7 +49,57 @@ export function useChat() {
     })
   }, [])
 
-  /** 内部发送逻辑（不检查 streaming，直接发） */
+  /**
+   * 处理单个 SSE 事件：提取增量 + 处理工具事件
+   */
+  const processEvent = useCallback((event: Record<string, unknown>) => {
+    // 提取文本/思考增量
+    let textDelta = ''
+    let thinkingDelta = ''
+
+    if (event.type === 'text_delta') textDelta = (event.text as string) || ''
+    else if (event.type === 'thinking_delta') thinkingDelta = (event.thinking as string) || ''
+
+    // message_update 可能包裹子事件
+    if (event.type === 'message_update' && event.assistantMessageEvent) {
+      const sub = event.assistantMessageEvent as Record<string, unknown>
+      if (sub.type === 'text_delta') textDelta = (sub.delta || sub.text || '') as string
+      else if (sub.type === 'thinking_delta') thinkingDelta = (sub.delta || sub.thinking || '') as string
+    }
+
+    if (textDelta) appendToAssistant('content', textDelta)
+    if (thinkingDelta) appendToAssistant('thinking', thinkingDelta)
+
+    // 工具事件
+    if (event.type === 'tool_execution_start') {
+      setChatMessages(prev => [...prev, {
+        role: 'toolCall',
+        content: JSON.stringify((event as any).args || ''),
+        toolName: (event as any).toolName || 'unknown',
+        toolCallId: (event as any).toolCallId || '',
+      }])
+    }
+
+    if (event.type === 'tool_execution_end') {
+      let text = ''
+      const result = (event as any).result
+      for (const c of result?.content || []) {
+        if (c.type === 'text') text += c.text || ''
+      }
+      setChatMessages(prev => [...prev, {
+        role: 'toolResult',
+        content: text || '(no output)',
+        toolName: (event as any).toolName || 'unknown',
+        toolCallId: (event as any).toolCallId || '',
+        isError: (event as any).isError || false,
+      }])
+    }
+  }, [appendToAssistant])
+
+  /**
+   * 内部发送逻辑：只加 assistant 占位，不处理用户消息
+   * （用户消息由 sendMessage 添加）
+   */
   const doSend = useCallback(async (
     text: string,
     activeId: string,
@@ -57,78 +109,27 @@ export function useChat() {
     streamingRef.current = true
     setStreaming(true)
 
-    // 添加占位 assistant 消息
+    // 添加 assistant 占位消息
     setChatMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
-    try {
-      const controller = new AbortController()
-      abortRef.current = controller
+    const controller = new AbortController()
+    abortRef.current = controller
 
+    try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
         signal: controller.signal,
       })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Chat request failed')
+      }
 
-      const reader = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('event: ') || !line.startsWith('data: ')) continue
-          const dataStr = line.slice(6)
-          if (!dataStr) continue
-          try {
-            const event = JSON.parse(dataStr)
-
-            let textDelta = ''
-            let thinkingDelta = ''
-
-            if (event.type === 'text_delta') textDelta = event.text || ''
-            else if (event.type === 'thinking_delta') thinkingDelta = event.thinking || ''
-
-            if (event.type === 'message_update' && event.assistantMessageEvent) {
-              const sub = event.assistantMessageEvent
-              if (sub.type === 'text_delta') textDelta = sub.delta || sub.text || ''
-              else if (sub.type === 'thinking_delta') thinkingDelta = sub.delta || sub.thinking || ''
-            }
-
-            if (textDelta) appendToAssistant('content', textDelta)
-            if (thinkingDelta) appendToAssistant('thinking', thinkingDelta)
-
-            if (event.type === 'tool_execution_start') {
-              setChatMessages(prev => [...prev, {
-                role: 'toolCall',
-                content: JSON.stringify(event.args || ''),
-                toolName: event.toolName || 'unknown',
-                toolCallId: event.toolCallId || '',
-              }])
-            }
-
-            if (event.type === 'tool_execution_end') {
-              let text = ''
-              for (const c of event.result?.content || []) {
-                if (c.type === 'text') text += c.text || ''
-              }
-              setChatMessages(prev => [...prev, {
-                role: 'toolResult',
-                content: text || '(no output)',
-                toolName: event.toolName || 'unknown',
-                toolCallId: event.toolCallId || '',
-                isError: event.isError || false,
-              }])
-            }
-          } catch {}
-        }
+      // 使用 readSSEEvents 逐事件解析
+      for await (const event of readSSEEvents(res.body!.getReader())) {
+        processEvent(event)
       }
 
       onComplete?.()
@@ -145,9 +146,11 @@ export function useChat() {
         await doSend(next, activeId, onComplete)
       }
     }
-  }, [appendToAssistant])
+  }, [processEvent])
 
-  /** 发送消息：如果正在 streaming 则入队，否则直接发送 */
+  /**
+   * 发送消息：先添加用户消息到列表，如果正在 streaming 则入队等待
+   */
   const sendMessage = useCallback(async (
     text: string,
     activeId: string | null,
@@ -164,7 +167,6 @@ export function useChat() {
       return
     }
 
-    // 直接发送
     await doSend(text, activeId, onComplete)
   }, [doSend])
 
