@@ -489,28 +489,26 @@ export function getContext(sessionFile: string): SessionContext {
 }
 
 /**
- * 压缩上下文：保留 session header + 最近 N 条消息，中间替换为摘要提示
+ * 压缩上下文：用 AI 摘要替换历史消息
+ *
+ * @param sessionFile 会话文件
+ * @param summary AI 生成的对话摘要
+ * @param keepCount 保留的最近消息条数
  */
-export function compressMessages(sessionFile: string, keepCount = 25): { messages: HistoryMessage[]; totalLines: number } {
+export function compressMessages(sessionFile: string, summary: string, keepCount = 20): { messages: HistoryMessage[]; totalLines: number } {
   const fullPath = resolvePath(sessionFile)
   const content = readFileSync(fullPath, 'utf-8')
   const lines = content.split('\n').filter(l => l.trim())
 
-  if (lines.length <= keepCount + 2) {
-    // 消息太少，不需要压缩
-    return getMessagesIncremental(sessionFile)
-  }
-
   // 保留 session header + 最近 keepCount 行
   const header = lines[0]
   const recentLines = lines.slice(-keepCount)
-  const removedCount = lines.length - keepCount - 1
 
   const newLines = [
     header,
     JSON.stringify({
       type: 'context_compress',
-      summary: `【上下文已压缩】移除了 ${removedCount} 条历史消息，保留了最近 ${keepCount} 条。`,
+      summary: `【对话摘要】${summary}`,
       timestamp: new Date().toISOString(),
     }),
     ...recentLines,

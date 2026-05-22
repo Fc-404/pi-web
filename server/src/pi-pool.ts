@@ -51,8 +51,11 @@ export class PiPool {
     return () => this.eventListeners.delete(cb)
   }
 
-  /** 广播事件（携带会话标识） */
+  private _broadcastSuspended = false
+
+  /** 广播事件（携带会话标识，压缩模式下暂停） */
   private broadcast(event: AgentEvent, sessionFile: string) {
+    if (this._broadcastSuspended) return
     const enriched = { ...event, sessionFile }
     this.eventListeners.forEach(cb => cb(enriched))
   }
@@ -218,11 +221,59 @@ export class PiPool {
   }
 
   /**
-   * 压缩会话上下文（保留最近消息，移除历史）
+   * 压缩会话上下文：AI 总结历史 + 保留最近消息
    */
   async compressSession(sessionFile: string): Promise<HistoryMessage[]> {
-    const result = compressMessages(sessionFile, 25)
-    return result.messages
+    const entry = this.pool.get(sessionFile)
+    if (!entry || !entry.client.running) {
+      throw new Error('会话未运行')
+    }
+
+    // 获取历史消息用于总结（取最近 15 轮对话）
+    const allMessages = getMessages(sessionFile)
+    const recentForSummary = allMessages.slice(-30)
+    
+    // 构造总结 prompt
+    const promptText = `请用简洁的中文总结以下对话的要点，用于后续对话参考上下文：
+\n${recentForSummary.map(m => `[${m.role}] ${(m.content || '').slice(0, 300)}`).join('\n')}`
+
+    // 暂停广播，防止压缩过程干扰前端
+    this._broadcastSuspended = true
+
+    try {
+      // 收集 AI 回复
+      let summary = ''
+      let agentEnded = false
+
+      const unsub = entry.client.onEvent((event) => {
+        if (event.type === 'text_delta') {
+          summary += (event.text as string) || ''
+        } else if (event.type === 'agent_end') {
+          agentEnded = true
+        }
+      })
+
+      await entry.client.prompt(promptText)
+
+      // 等待 agent_end（最多 60 秒）
+      for (let i = 0; i < 300; i++) {
+        if (agentEnded) break
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      unsub()
+
+      if (!summary.trim()) {
+        throw new Error('AI 总结失败，未收到回复')
+      }
+
+      // 用摘要替换历史消息
+      const result = compressMessages(sessionFile, summary.trim(), 20)
+      return result.messages
+
+    } finally {
+      this._broadcastSuspended = false
+    }
   }
 
   async setModel(sessionFile: string, provider: string, modelId: string): Promise<void> {
