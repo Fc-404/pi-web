@@ -292,7 +292,7 @@ export function MainLayout() {
 
         <main className="flex-1 flex flex-col min-w-0">
           {mode === 'config' ? (
-            <ConfigContent onClose={() => setMode('chat')} />
+            <ConfigContent />
           ) : activeId ? (
             <ChatContextProvider value={{
               messages: chatMessages, streaming, chatError: error,
