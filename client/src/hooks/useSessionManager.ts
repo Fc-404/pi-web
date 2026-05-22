@@ -24,6 +24,7 @@ import { getSessionCache, setSessionCache, deleteSessionCache } from '../lib/db'
 export interface SessionOperationResult {
   messages: HistoryMessage[]
   status: PoolStatus
+  fromCache?: boolean // 是否来自缓存（用于 UI 快速消除加载态）
 }
 
 export function useSessionManager() {
@@ -90,8 +91,8 @@ export function useSessionManager() {
           })
           return { messages: newMessages, status }
         } else {
-          // 无新增 → 直接用缓存
-          return { messages: cached.messages, status }
+          // 无新增 → 直接用缓存，标记 fromCache
+          return { messages: cached.messages, status, fromCache: true }
         }
       } else {
         // 无缓存 → 全量拉取 + 写入缓存

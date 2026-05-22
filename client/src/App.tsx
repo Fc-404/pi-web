@@ -63,19 +63,22 @@ function App() {
     clearMessages()
     setLoadProgress(null)
 
+    let fromCache = false
     try {
-      const { messages, status } = await openOrSwitch(session.file)
-      replaceMessages(messages)
-      setPoolStatus((prev) => ({ ...prev, [session.file]: status }))
+      const result = await openOrSwitch(session.file)
+      fromCache = result.fromCache ?? false
+      replaceMessages(result.messages)
+      setPoolStatus((prev) => ({ ...prev, [session.file]: result.status }))
     } catch (err: any) {
       setError(err.message)
     }
 
-    // 进度到 100% 变绿，延迟 800ms 再消失
+    // 缓存命中 → 快速消除加载态（200ms），全量加载 → 保留 800ms 过渡
+    const delay = fromCache ? 200 : 800
     setTimeout(() => {
       setSwitchingId(null)
       setLoadProgress(null)
-    }, 800)
+    }, delay)
 
     setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
   }, [openOrSwitch, setSwitchingId, setPoolStatus, setError, clearMessages, replaceMessages])
