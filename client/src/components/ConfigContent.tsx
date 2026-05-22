@@ -37,11 +37,11 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* 标签栏 */}
-      <div className="flex items-end gap-2 px-4 md:px-5 pt-1 pb-3 bg-white flex-shrink-0">
+      {/* 标签栏 — 与 ChatHeader 完全一致 */}
+      <div className="flex items-center gap-2 px-4 md:px-5 py-3 bg-white border-b border-zinc-200 flex-shrink-0">
         {/* 移动端汉堡菜单 */}
         {onToggleSidebar && (
-          <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0 self-center">
+          <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -53,7 +53,7 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
             key={tab.key}
             ref={(el) => { tabRefs.current[i] = el }}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-3 pb-3 pt-1 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
+            className={`px-3 py-1 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
               activeTab === tab.key
                 ? 'text-indigo-600 font-medium'
                 : 'text-zinc-500 hover:text-zinc-700'
@@ -63,10 +63,10 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
           </button>
         ))}
       </div>
-      {/* 底部线 + 滑块（独立容器，不受 padding 影响） */}
-      <div ref={barRef} className="relative h-px bg-zinc-200 mx-4 md:mx-5">
+      {/* 滑块（覆盖在 border-b 上） */}
+      <div ref={barRef} className="relative h-0">
         <div
-          className="absolute top-[-0.5px] h-0.5 bg-indigo-500 transition-all duration-300 ease-out z-10"
+          className="absolute top-[-1px] h-0.5 bg-indigo-500 transition-all duration-300 ease-out z-10"
           style={{ left: indicator.left, width: indicator.width }}
         />
       </div>
