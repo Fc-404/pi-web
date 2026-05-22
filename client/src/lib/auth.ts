@@ -22,7 +22,9 @@ export function isLoggedIn(): boolean {
 
 import CryptoJS from 'crypto-js'
 
-/** SHA-256 哈希密码，与后端一致（crypto-js，任何环境可用） */
+const SALT = 'piweb'
+
+/** SHA-256 加盐哈希密码，与后端一致 */
 export function hashPassword(password: string): string {
-  return CryptoJS.SHA256(password).toString()
+  return CryptoJS.SHA256(password + SALT).toString()
 }

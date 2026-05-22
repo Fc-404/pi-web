@@ -38,8 +38,10 @@ interface AppConfig {
   passwordHash: string
 }
 
+const SALT = 'piweb'
+
 function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex')
+  return createHash('sha256').update(password + SALT).digest('hex')
 }
 
 function loadConfig(): AppConfig {
