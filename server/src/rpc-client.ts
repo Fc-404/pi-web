@@ -228,4 +228,18 @@ export class RpcClient {
     }
     throw new Error(`get_state failed: ${res.error}`)
   }
+
+  async setModel(provider: string, modelId: string): Promise<void> {
+    const res = await this.sendCommand({ type: 'set_model', provider, modelId })
+    if (!res.success) {
+      throw new Error(`set_model failed: ${res.error}`)
+    }
+  }
+
+  async setThinkingLevel(level: string): Promise<void> {
+    const res = await this.sendCommand({ type: 'set_thinking_level', level })
+    if (!res.success) {
+      throw new Error(`set_thinking_level failed: ${res.error}`)
+    }
+  }
 }

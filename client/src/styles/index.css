@@ -123,12 +123,22 @@ html, body, #root {
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
+  }
+
+  /* 全局禁用聚焦外边框 */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  [data-slot]:focus,
+  [data-slot]:focus-visible {
+    outline: 0 !important;
+    box-shadow: none !important;
   }
 }

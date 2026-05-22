@@ -5,15 +5,19 @@ import type { PoolStatus } from '../lib/api'
 export function ChatHeader({
   status,
   title,
-  onClose,
   streaming,
   onRename,
+  onOpenSettings,
+  loading,
+  loadProgress,
 }: {
   status?: PoolStatus
   title: string
-  onClose: () => void
   streaming?: boolean
   onRename?: (newName: string) => void
+  onOpenSettings?: () => void
+  loading?: boolean
+  loadProgress?: { loaded: number; total: number } | null
 }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
@@ -44,8 +48,11 @@ export function ChatHeader({
     }
   }, [editing])
 
+  const pct = loadProgress ? Math.min((loadProgress.loaded / loadProgress.total) * 100, 100) : 0
+
   return (
-    <div className="hidden md:flex items-center gap-2 px-5 py-3 border-b border-zinc-200 bg-white flex-shrink-0">
+    <div className="hidden md:flex flex-col flex-shrink-0">
+      <div className="flex items-center gap-2 px-5 py-3 bg-white">
       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
       {editing ? (
         <input
@@ -54,7 +61,7 @@ export function ChatHeader({
           onChange={e => setEditValue(e.target.value)}
           onBlur={submitEdit}
           onKeyDown={e => { if (e.key === 'Enter') submitEdit(); if (e.key === 'Escape') setEditing(false) }}
-          className="flex-1 text-sm font-medium text-zinc-700 bg-zinc-50 border border-zinc-300 rounded px-1.5 py-0.5 outline-none focus:border-sky-400"
+          className="flex-1 text-sm font-medium text-zinc-700 bg-zinc-50 border border-zinc-300 rounded px-1.5 py-0.5 outline-none focus:border-indigo-400"
         />
       ) : (
         <>
@@ -74,7 +81,25 @@ export function ChatHeader({
           )}
         </>
       )}
-      <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
+      {onOpenSettings && (
+        <Button variant="ghost" size="icon-sm" onClick={onOpenSettings} className="flex-shrink-0" title="设置">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </Button>
+      )}
+      </div>
+      {loading ? (
+        <div className="h-px bg-zinc-100">
+          <div
+            className="h-full bg-indigo-400"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : (
+        <div className="h-px bg-zinc-200" />
+      )}
     </div>
   )
 }

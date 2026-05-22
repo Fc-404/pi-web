@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sidebar } from './components/Sidebar'
 import { ChatArea } from './components/ChatArea'
@@ -7,9 +7,17 @@ import { useSessions } from './hooks/useSessions'
 import { usePoolStatus } from './hooks/usePoolStatus'
 import { useChat } from './hooks/useChat'
 import { useSessionActions } from './hooks/useSessionActions'
-import { openSession, fetchSessionMessages, type SessionInfo, type PoolStatus } from './lib/api'
+import { openSession, fetchSessionMessages, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo, type PoolStatus } from './lib/api'
+import { useToast } from './components/Toast'
+import { SettingsPanel, useSettings } from './components/SettingsPanel'
 
 function App() {
+  const { showToast } = useToast()
+  const settings = useSettings()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
+  const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
+
   // 数据层
   const { groups, loading, refresh, create, remove } = useSessions()
   const { poolStatus, activeId, setPoolStatus } = usePoolStatus()
@@ -21,6 +29,11 @@ function App() {
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [input, setInput] = useState('')
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null)
+  const [thinkingLevel, setThinkingLevel] = useState('high')
+  const [contextUsed, setContextUsed] = useState(0)
+  const [contextWindow, setContextWindow] = useState(1000000)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   // 当前活跃会话信息
@@ -46,6 +59,8 @@ function App() {
     setSwitchingId(session.id)
     setSidebarOpen(false)
     setError(null)
+    clearMessages()
+    setLoadProgress(null)
 
     const currentStatus = poolStatus[session.file]
     if (currentStatus === 'starting' || currentStatus === 'ready') {
@@ -53,9 +68,19 @@ function App() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionFile: session.file }),
       })
-      const msgs = await fetchSessionMessages(session.file)
-      onMessagesLoaded(msgs)
+      try {
+        const msgs = await fetchSessionMessagesWithProgress(session.file, (loaded, total) => {
+          setLoadProgress({ loaded, total })
+        })
+        onMessagesLoaded(msgs)
+      } catch (err: any) {
+        setError(err.message)
+      }
+      // 先让进度条到 100%，延迟一下再消失
+      setLoadProgress({ loaded: 1, total: 1 })
+      await new Promise(r => setTimeout(r, 600))
       setSwitchingId(null)
+      setLoadProgress(null)
       setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
       return
     }
@@ -68,7 +93,8 @@ function App() {
       setError(err.message)
     }
     setSwitchingId(null)
-  }, [poolStatus, onMessagesLoaded, setPoolStatus, setError])
+    setLoadProgress(null)
+  }, [poolStatus, onMessagesLoaded, setPoolStatus, setError, clearMessages])
 
   // 新建会话
   const handleNewSession = useCallback(async () => {
@@ -78,27 +104,58 @@ function App() {
       const data = await create()
       onMessagesLoaded(data.messages || [])
       setPoolStatus(prev => ({ ...prev, [data.sessionFile]: data.status }))
-    } catch (err: any) { setError(err.message) }
+      showToast('新会话已创建', 'success')
+    } catch (err: any) {
+      setError(err.message)
+      showToast('创建会话失败', 'error')
+    }
     finally { setCreating(false) }
-  }, [create, onMessagesLoaded, setPoolStatus, setError])
+  }, [create, onMessagesLoaded, setPoolStatus, setError, showToast])
 
   // 删除会话
   const handleDelete = useCallback(async (sessionFile: string) => {
     setConfirmDelete(null)
-    await remove(sessionFile)
-    if (activeId === sessionFile) clearMessages()
-  }, [remove, activeId, clearMessages])
+    try {
+      await remove(sessionFile)
+      if (activeId === sessionFile) clearMessages()
+      showToast('会话已删除', 'success')
+    } catch {
+      showToast('删除失败', 'error')
+    }
+  }, [remove, activeId, clearMessages, showToast])
 
-  // 关闭会话
+  // 关闭当前活跃会话
   const handleClose = useCallback(async () => {
     if (!activeId) return
-    await actions.handleClose(activeId, clearMessages)
-  }, [activeId, actions, clearMessages])
+    try {
+      await actions.handleClose(activeId, clearMessages)
+      showToast('会话已关闭', 'info')
+    } catch {
+      showToast('关闭会话失败', 'error')
+    }
+  }, [activeId, actions, clearMessages, showToast])
+
+  // 关闭指定会话（给侧边栏终止按钮用）
+  const handleCloseSession = useCallback(async (sessionFile: string) => {
+    try {
+      await actions.handleClose(sessionFile, () => {
+        if (activeId === sessionFile) clearMessages()
+      })
+      showToast('会话已终止', 'info')
+    } catch {
+      showToast('终止会话失败', 'error')
+    }
+  }, [activeId, actions, clearMessages, showToast])
 
   // 关闭全部
   const handleCloseAll = useCallback(async () => {
-    await actions.handleCloseAll(clearMessages)
-  }, [actions, clearMessages])
+    try {
+      await actions.handleCloseAll(clearMessages)
+      showToast('已关闭全部会话', 'info')
+    } catch {
+      showToast('关闭全部会话失败', 'error')
+    }
+  }, [actions, clearMessages, showToast])
 
   // 折叠
   const toggleGroup = useCallback((dir: string) => {
@@ -108,6 +165,43 @@ function App() {
       return next
     })
   }, [])
+
+  // 自动加载：刷新页面后，如果已有活跃会话，自动加载消息
+  const autoLoadedRef = useRef(false)
+  useEffect(() => {
+    if (loading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
+    autoLoadedRef.current = true
+    setAutoLoading(true)
+    fetchSessionMessagesWithProgress(activeId, (loaded, total) => {
+      setLoadProgress({ loaded, total })
+    }).then(msgs => {
+      if (msgs.length > 0) replaceMessages(msgs)
+    }).catch(() => {}).finally(() => {
+      setLoadProgress({ loaded: 1, total: 1 })
+      setTimeout(() => {
+        setAutoLoading(false)
+        setLoadProgress(null)
+      }, 600)
+    })
+  }, [loading, activeId, activeSession, chatMessages.length, replaceMessages])
+
+  // 获取当前思考级别 + 上下文使用情况
+  useEffect(() => {
+    if (!activeId) return
+    fetch(`/api/sessions/state?file=${encodeURIComponent(activeId)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel)
+      })
+      .catch(() => {})
+    fetch(`/api/sessions/context?file=${encodeURIComponent(activeId)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.usedTokens !== undefined) setContextUsed(data.usedTokens)
+        if (data.contextWindow) setContextWindow(data.contextWindow)
+      })
+      .catch(() => {})
+  }, [activeId])
 
   // 重命名会话
   const handleRename = useCallback(async (newName: string) => {
@@ -136,6 +230,8 @@ function App() {
     setInput('')
   }, [input, activeId, sendMessage, replaceMessages])
 
+  const isLoading = switchingId !== null || autoLoading
+
   // 标题
   const title = activeSession?.title
     ? (activeSession.title.length > 9 ? activeSession.title.slice(0, 8) + '...' : activeSession.title)
@@ -159,18 +255,53 @@ function App() {
         />
       )}
 
+      {/* 设置面板 */}
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={handleCloseSettings}
+        onApply={async (s) => {
+          if (!activeId) return
+          try {
+            await updateSessionSettings(activeId, {
+              modelId: s.modelId || undefined,
+              thinkingLevel: s.thinkingLevel,
+            })
+            setThinkingLevel(s.thinkingLevel)
+            showToast('设置已应用', 'success')
+          } catch (err: any) {
+            showToast('应用设置失败: ' + (err.message || '未知错误'), 'error')
+          }
+        }}
+        activeId={activeId}
+        thinkingDefaultOpen={settings.thinkingDefaultOpen}
+        onThinkingDefaultOpenChange={settings.setThinkingDefaultOpen}
+        toolCallDefaultOpen={settings.toolCallDefaultOpen}
+        onToolCallDefaultOpenChange={settings.setToolCallDefaultOpen}
+        showFooterTime={settings.showFooterTime}
+        onShowFooterTimeChange={settings.setShowFooterTime}
+        showFooterInput={settings.showFooterInput}
+        onShowFooterInputChange={settings.setShowFooterInput}
+        showFooterOutput={settings.showFooterOutput}
+        onShowFooterOutputChange={settings.setShowFooterOutput}
+        showFooterCache={settings.showFooterCache}
+        onShowFooterCacheChange={settings.setShowFooterCache}
+        showFooterCost={settings.showFooterCost}
+        onShowFooterCostChange={settings.setShowFooterCost}
+      />
+
       {/* 新建遮罩 */}
       {creating && (
         <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex items-center justify-center">
           <div className="text-center">
-            <div className="w-10 h-10 border-4 border-sky-200 border-t-sky-500 rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
             <p className="text-zinc-500 text-sm">正在新建会话...</p>
           </div>
         </div>
       )}
 
       {/* 移动端顶部导航 */}
-      <header className="md:hidden flex items-center gap-2 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0 z-30">
+      <header className="md:hidden flex flex-col flex-shrink-0 z-30 bg-white">
+      <div className="flex items-center gap-2 px-4 py-3">
         <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -209,12 +340,24 @@ function App() {
           )}
         </div>
         {activeSession && (
-          <Button variant="ghost" size="icon-sm" onClick={handleClose} className="text-red-400 hover:text-red-600 hover:bg-red-50">
+          <Button variant="ghost" size="icon-sm" onClick={handleOpenSettings} className="flex-shrink-0" title="设置">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </Button>
         )}
+      </div>
+      {isLoading ? (
+        <div className="h-px bg-zinc-100">
+          <div
+            className="h-full bg-indigo-400"
+            style={{ width: `${loadProgress ? Math.min((loadProgress.loaded / loadProgress.total) * 100, 100) : 0}%` }}
+          />
+        </div>
+      ) : (
+        <div className="h-px bg-zinc-200" />
+      )}
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
@@ -232,6 +375,7 @@ function App() {
           onNew={handleNewSession}
           onCloseAll={handleCloseAll}
           onCloseSidebar={() => setSidebarOpen(false)}
+          onClose={handleCloseSession}
         />
 
         <main className="flex-1 flex flex-col min-w-0">
@@ -246,8 +390,18 @@ function App() {
               onInputChange={setInput}
               onSend={handleSend}
               onStop={stopGeneration}
-              onClose={handleClose}
               onRename={handleRename}
+              loading={isLoading}
+              loadingLabel={isLoading ? (
+                loadProgress
+                  ? `正在加载 ${(loadProgress.loaded / 1024).toFixed(0)}KB / ${(loadProgress.total / 1024).toFixed(0)}KB`
+                  : '正在加载...'
+              ) : undefined}
+              onOpenSettings={handleOpenSettings}
+              thinkingLevel={thinkingLevel}
+              contextUsed={contextUsed}
+              contextWindow={contextWindow}
+              loadProgress={loadProgress}
             />
           ) : (
             <div className="hidden md:flex flex-1 items-center justify-center">

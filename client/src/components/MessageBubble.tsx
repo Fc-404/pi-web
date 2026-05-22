@@ -1,12 +1,32 @@
 import { useState, useRef, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { FileText, Wrench } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleTrigger,
   CollapsibleContent,
 } from '@/components/ui/collapsible'
 import type { HistoryMessage } from '../lib/api'
+
+// ===== 统一折叠箭头 =====
+
+function loadSetting<T>(key: string, fallback: T): T {
+  try {
+    const val = localStorage.getItem('piweb-settings-' + key)
+    return val !== null ? JSON.parse(val) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function CollapseArrow({ open }: { open: boolean }) {
+  return (
+    <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
 
 // ===== 横向滚动位置保持组件 =====
 
@@ -58,7 +78,7 @@ function MarkdownContentInner({ content }: { content: string }) {
           )
         },
         a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noreferrer" className="text-sky-600 underline hover:text-sky-700">{children}</a>
+          <a href={href} target="_blank" rel="noreferrer" className="text-indigo-600 underline hover:text-indigo-700">{children}</a>
         ),
         table: ({ children }) => (
           <ScrollableDiv className="overflow-x-auto my-3">
@@ -96,13 +116,16 @@ function FullscreenPreview({ content, isUser, onClose }: { content: string; isUs
   )
 }
 
-// ===== 工具调用气泡 =====
+// ===== 工具调用气泡（统一用 Collapsible） =====
 
 function ToolCallBubble({ msg }: { msg: HistoryMessage }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('piweb-settings-toolCallDefaultOpen') || 'false') }
+    catch { return false }
+  })
   const isResult = msg.role === 'toolResult'
 
-  // 从 arguments JSON 中提取命令/文件摘要
+  // 摘要：始终显示工具名 + 操作的文件/命令（不因结果而改变）
   const summarySuffix = (() => {
     if (!msg.content) return ''
     try {
@@ -117,41 +140,62 @@ function ToolCallBubble({ msg }: { msg: HistoryMessage }) {
       if (msg.toolName === 'search' || msg.toolName === 'grep') {
         return args.pattern || args.query || args.text || ''
       }
-      // 通用：取第一个字符串值
       const firstVal = Object.values(args).find(v => typeof v === 'string')
       return firstVal ? (firstVal.length > 50 ? firstVal.slice(0, 50) + '...' : firstVal) : ''
     } catch {
-      return msg.content.length > 50 ? msg.content.slice(0, 50) + '...' : msg.content
+      // toolResult 的 content 是文本不是 JSON，摘要显示操作的工具名即可
+      return ''
     }
   })()
 
   return (
     <div className="flex justify-start mb-3">
       <div className="max-w-[90%] md:max-w-[80%] rounded-2xl px-4 py-3 bg-zinc-100 text-zinc-800 rounded-bl-md">
-        <details className="text-xs group" onToggle={(e) => setOpen(e.currentTarget.open)}>
-          <summary className="flex items-center gap-1.5 text-zinc-500 cursor-pointer hover:text-zinc-700 select-none [&::-webkit-details-marker]:hidden list-none">
-            {/* 自定义折叠三角 */}
-            <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            <span>{isResult ? '📋' : '🔧'}</span>
-            <span className="font-mono">{msg.toolName || (isResult ? '工具结果' : '工具调用')}</span>
-            {summarySuffix && <span className="text-zinc-400 truncate ml-0.5">{summarySuffix}</span>}
-            {msg.isError && <span className="text-red-400 ml-1">(错误)</span>}
-          </summary>
-          <pre className="mt-2 text-[11px] leading-relaxed text-zinc-600 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
-            {msg.content}
-          </pre>
-        </details>
+        <Collapsible open={open} onOpenChange={setOpen} className="text-xs">
+          <CollapsibleTrigger asChild>
+            <button className="flex items-center gap-1.5 text-zinc-500 cursor-pointer hover:text-zinc-700 select-none w-full text-left">
+              <CollapseArrow open={open} />
+              {isResult ? (
+                <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+              ) : (
+                <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
+              )}
+              <span className="font-mono">{msg.toolName || (isResult ? '工具结果' : '工具调用')}</span>
+              {summarySuffix && <span className="text-zinc-400 truncate ml-0.5">{summarySuffix}</span>}
+              {msg.isError && <span className="text-red-400 ml-1">(错误)</span>}
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <pre className="text-[11px] leading-relaxed text-zinc-600 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+              {msg.content}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </div>
   )
+}
+
+function formatMsgTime(ts: number): string {
+  const d = new Date(ts)
+  const now = new Date()
+  const isToday = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate()
+  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  if (isToday) return time
+  const date = d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  return `${date} ${time}`
 }
 
 // ===== 消息气泡 =====
 
 function MessageBubbleInner({ msg, prevRole, nextRole }: { msg: HistoryMessage; prevRole?: string; nextRole?: string }) {
   const [fullscreen, setFullscreen] = useState(false)
+  const [thinkingOpen, setThinkingOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('piweb-settings-thinkingDefaultOpen') || 'false') }
+    catch { return false }
+  })
 
   if (msg.role === 'toolCall' || msg.role === 'toolResult') {
     return <ToolCallBubble msg={msg} />
@@ -162,31 +206,55 @@ function MessageBubbleInner({ msg, prevRole, nextRole }: { msg: HistoryMessage; 
   return (
     <>
       <div
-        className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
+        className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-4`}
         onDoubleClick={() => setFullscreen(true)}
       >
         <div className={`max-w-[90%] md:max-w-[80%] rounded-2xl px-4 py-3 ${
-          isUser ? 'bg-sky-500 text-white rounded-br-md' : 'bg-zinc-100 text-zinc-800 rounded-bl-md'
+          isUser ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-zinc-100 text-zinc-800 rounded-bl-md'
         }`}>
           {msg.thinking && (
-            <details className="mb-2 text-xs" onToggle={(e) => {
-              const detail = e.currentTarget
-              const arrow = detail.querySelector('.thinking-arrow')
-              if (arrow) arrow.classList.toggle('rotate-90', detail.open)
-            }}>
-              <summary className="flex items-center gap-1.5 text-zinc-400 cursor-pointer hover:text-zinc-600 select-none [&::-webkit-details-marker]:hidden list-none">
-                <svg className="thinking-arrow w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <span>思考过程</span>
-              </summary>
-              <div className="mt-1.5 text-zinc-500 leading-relaxed whitespace-pre-wrap">{msg.thinking}</div>
-            </details>
+            <Collapsible open={thinkingOpen} onOpenChange={setThinkingOpen} className="mb-2 text-xs">
+              <CollapsibleTrigger asChild>
+                <button className="flex items-center gap-1.5 text-zinc-400 cursor-pointer hover:text-zinc-600 select-none">
+                  <CollapseArrow open={thinkingOpen} />
+                  <span>思考过程</span>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-1.5 text-zinc-500 leading-relaxed whitespace-pre-wrap">
+                {msg.thinking}
+              </CollapsibleContent>
+            </Collapsible>
           )}
           <div className={`text-sm whitespace-pre-wrap break-words ${isUser ? '' : 'markdown-body'}`}>
             {isUser ? msg.content : <MarkdownContent content={msg.content} />}
           </div>
         </div>
+
+        {/* 信息栏 — 气泡外部，仅 assistant 消息 */}
+        {!isUser && msg.usage && (() => {
+          const showTime = loadSetting('showFooterTime', true)
+          const showInput = loadSetting('showFooterInput', true)
+          const showOutput = loadSetting('showFooterOutput', true)
+          const showCache = loadSetting('showFooterCache', true)
+          const showCost = loadSetting('showFooterCost', true)
+          const hasAny = showTime || showInput || showOutput || showCache || showCost
+          if (!hasAny) return null
+          return (
+            <div className="flex items-center gap-8 mt-0.5 px-1 text-[10px] text-zinc-400 select-none">
+              <span>
+                {showTime && msg.timestamp ? formatMsgTime(msg.timestamp) : ''}
+              </span>
+              <div className="flex items-center gap-2">
+                {showInput && msg.usage.input > 0 && <span>in {msg.usage.input}</span>}
+                {showOutput && msg.usage.output > 0 && <span>out {msg.usage.output}</span>}
+                {showCache && msg.usage.cacheRead > 0 && <span>cache {msg.usage.cacheRead}</span>}
+                {showCost && msg.usage.cost?.total > 0 && (
+                  <span className="font-mono">${msg.usage.cost.total.toFixed(6)}</span>
+                )}
+              </div>
+            </div>
+          )
+        })()}
       </div>
       {fullscreen && (
         <FullscreenPreview

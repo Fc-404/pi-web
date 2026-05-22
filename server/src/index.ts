@@ -3,7 +3,7 @@ import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
 import { listSessions, createSessionFile, renameSession } from './sessions.js'
-import { getSessionMessages } from './messages.js'
+import { getSessionMessages, getSessionContext } from './messages.js'
 import { piPool } from './pi-pool.js'
 
 const app = new Hono()
@@ -107,6 +107,71 @@ app.post('/api/sessions/new', async (c) => {
     return c.json({ success: true, sessionFile: relativePath, messages, status })
   } catch (err: any) {
     return c.json({ error: err.message }, 500)
+  }
+})
+
+// ===== 模型 & 设置 =====
+
+// 可用模型列表
+app.get('/api/models', async (c) => {
+  const { execSync } = await import('node:child_process')
+  try {
+    const output = execSync('pi --list-models 2>&1', { timeout: 10000 }).toString()
+    const lines = output.trim().split('\n').slice(1) // 跳过表头
+    const models = lines.map(line => {
+      const parts = line.trim().split(/\s+/)
+      return {
+        provider: parts[0] || '',
+        modelId: parts[1] || '',
+        context: parts[2] || '',
+        thinking: parts[4] === 'yes',
+      }
+    })
+    return c.json({ models })
+  } catch (err) {
+    return c.json({ error: 'Failed to list models' }, 500)
+  }
+})
+
+// 当前会话状态（含当前模型、思考级别等）
+app.get('/api/sessions/state', async (c) => {
+  const file = c.req.query('file')
+  if (!file) return c.json({ error: 'file query required' }, 400)
+  try {
+    const state = await piPool.getSessionState(file)
+    return c.json(state)
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400)
+  }
+})
+
+// 更新会话设置（模型/思考模式）
+app.post('/api/sessions/settings', async (c) => {
+  const { sessionFile, modelId, thinkingLevel } = await c.req.json()
+  if (!sessionFile) return c.json({ error: 'sessionFile required' }, 400)
+
+  try {
+    if (modelId) {
+      await piPool.setModel(sessionFile, 'opencode-go', modelId)
+    }
+    if (thinkingLevel) {
+      await piPool.setThinkingLevel(sessionFile, thinkingLevel)
+    }
+    return c.json({ success: true })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
+
+// 会话上下文使用情况
+app.get('/api/sessions/context', async (c) => {
+  const file = c.req.query('file')
+  if (!file) return c.json({ error: 'file query required' }, 400)
+  try {
+    const ctx = getSessionContext(file)
+    return c.json(ctx)
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400)
   }
 })
 

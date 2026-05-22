@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { HistoryMessage, PoolStatus } from '../lib/api'
 import { MessageBubble } from './MessageBubble'
 
@@ -7,11 +7,15 @@ export function ChatMessages({
   streaming,
   error,
   activeStatus,
+  loading,
+  loadingLabel,
 }: {
   messages: HistoryMessage[]
   streaming: boolean
   error: string | null
   activeStatus?: PoolStatus
+  loading?: boolean
+  loadingLabel?: ReactNode
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
@@ -53,7 +57,16 @@ export function ChatMessages({
           <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
         )}
 
-        {messages.length === 0 && !streaming && (
+        {loading && (
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-zinc-200 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-zinc-400 text-sm">{loadingLabel || '正在加载...'}</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && messages.length === 0 && !streaming && (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-zinc-100 flex items-center justify-center">

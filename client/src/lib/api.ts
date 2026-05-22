@@ -21,6 +21,20 @@ export interface HistoryMessage {
   toolName?: string
   toolCallId?: string
   isError?: boolean
+  usage?: {
+    input: number
+    output: number
+    cacheRead: number
+    totalTokens: number
+    cost: {
+      input: number
+      output: number
+      cacheRead: number
+      total: number
+    }
+  }
+  model?: string
+  timestamp?: number
 }
 
 export type PoolStatus = 'stopped' | 'starting' | 'ready'
@@ -98,4 +112,55 @@ export async function fetchSessionMessages(sessionFile: string): Promise<History
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
   const data = await res.json()
   return data.messages || []
+}
+
+export async function fetchSessionMessagesWithProgress(
+  sessionFile: string,
+  onProgress: (loaded: number, total: number) => void
+): Promise<HistoryMessage[]> {
+  const res = await fetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+
+  const total = parseInt(res.headers.get('Content-Length') || '0', 10)
+  const reader = res.body!.getReader()
+  let received = 0
+  const chunks: Uint8Array[] = []
+
+  // 先给一个初始进度
+  if (total > 0) onProgress(0, total)
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value && value.length > 0) {
+      chunks.push(value)
+      received += value.length
+      // 每收到一个 chunk 就更新进度
+      if (total > 0) onProgress(received, total)
+    }
+  }
+
+  // 确保最后显示 100%
+  if (total > 0) onProgress(total, total)
+
+  const allBytes = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    allBytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  const text = new TextDecoder().decode(allBytes)
+  return JSON.parse(text).messages || []
+}
+
+export async function updateSessionSettings(sessionFile: string, settings: {
+  modelId?: string
+  thinkingLevel?: string
+}): Promise<void> {
+  const res = await fetch('/api/sessions/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionFile, ...settings }),
+  })
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
 }

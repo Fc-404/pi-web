@@ -3,6 +3,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { FullscreenInput } from './FullscreenInput'
 
+const thinkingColors: Record<string, string> = {
+  off: '#d4d4d8',
+  low: '#22d3ee',
+  medium: '#60a5fa',
+  high: '#818cf8',
+  xhigh: '#8b5cf6',
+}
+
 export function ChatInput({
   value,
   onChange,
@@ -11,6 +19,9 @@ export function ChatInput({
   disabled,
   streaming,
   placeholder,
+  thinkingLevel,
+  contextUsed,
+  contextWindow,
 }: {
   value: string
   onChange: (val: string) => void
@@ -19,6 +30,9 @@ export function ChatInput({
   disabled: boolean
   streaming: boolean
   placeholder: string
+  thinkingLevel?: string
+  contextUsed?: number
+  contextWindow?: number
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
@@ -48,12 +62,26 @@ export function ChatInput({
         onClose={() => setFullscreen(false)}
         disabled={disabled}
         streaming={streaming}
+        thinkingLevel={thinkingLevel}
       />
     )
   }
 
+  const contextPct = contextWindow && contextUsed
+    ? Math.min((contextUsed / contextWindow) * 100, 100)
+    : 0
+  const contextColor = contextPct > 80 ? '#ef4444' : contextPct > 50 ? '#f59e0b' : '#22c55e'
+
   return (
-    <div className="flex-shrink-0 border-t border-zinc-200 bg-white px-4 py-3 md:px-6">
+    <div className="flex-shrink-0 bg-white">
+      {/* 上下文进度条 */}
+      <div className="h-[2px] bg-zinc-100">
+        <div
+          className="h-full transition-all duration-500"
+          style={{ width: `${contextPct}%`, backgroundColor: contextColor }}
+        />
+      </div>
+      <div className="px-4 py-3 md:px-6">
       <div className="flex gap-2 items-end max-w-4xl mx-auto">
         <div className="flex-1 relative">
           <Textarea
@@ -63,8 +91,9 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             rows={1}
-            disabled={disabled}
-            className="min-h-[42px] max-h-[180px] py-[10px]"
+            disabled={disabled && !streaming}
+            className="min-h-[42px] max-h-[180px] py-[10px] transition-colors duration-300"
+            style={{ borderColor: thinkingColors[thinkingLevel || 'high'] || '#d4d4d8' }}
           />
           {value.length > 60 && (
             <Button
@@ -80,7 +109,7 @@ export function ChatInput({
             </Button>
           )}
         </div>
-        {streaming ? (
+        {streaming && !value.trim() ? (
           <Button
             onClick={onStop}
             size="icon"
@@ -94,10 +123,10 @@ export function ChatInput({
         ) : (
           <Button
             onClick={onSend}
-            disabled={disabled || !value.trim()}
+            disabled={!value.trim()}
             size="icon"
-            className="min-h-[42px] min-w-[42px] bg-sky-500 hover:bg-sky-600 text-white"
-            title="发送"
+            className="min-h-[42px] min-w-[42px] bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-zinc-300"
+            title={streaming ? '排队发送' : '发送'}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12l7-7 7 7M12 19V5" />
@@ -105,6 +134,7 @@ export function ChatInput({
           </Button>
         )}
       </div>
+    </div>
     </div>
   )
 }

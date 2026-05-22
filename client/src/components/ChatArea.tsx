@@ -13,8 +13,14 @@ export function ChatArea({
   onInputChange,
   onSend,
   onStop,
-  onClose,
   onRename,
+  loading,
+  loadingLabel,
+  onOpenSettings,
+  thinkingLevel,
+  contextUsed,
+  contextWindow,
+  loadProgress,
 }: {
   activeStatus?: PoolStatus
   title: string
@@ -25,8 +31,14 @@ export function ChatArea({
   onInputChange: (val: string) => void
   onSend: () => void
   onStop: () => void
-  onClose: () => void
   onRename?: (newName: string) => void
+  loading?: boolean
+  loadingLabel?: string | React.ReactNode
+  onOpenSettings?: () => void
+  thinkingLevel?: string
+  contextUsed?: number
+  contextWindow?: number
+  loadProgress?: { loaded: number; total: number } | null
 }) {
   const canSend = activeStatus === 'ready' && !streaming
   const placeholder = activeStatus === 'starting'
@@ -35,12 +47,14 @@ export function ChatArea({
 
   return (
     <>
-      <ChatHeader status={activeStatus} title={title} onClose={onClose} streaming={streaming} onRename={onRename} />
+      <ChatHeader status={activeStatus} title={title} streaming={streaming} onRename={onRename} onOpenSettings={onOpenSettings} loading={loading} loadProgress={loadProgress} />
       <ChatMessages
         messages={messages}
         streaming={streaming}
         error={error}
         activeStatus={activeStatus}
+        loading={loading}
+        loadingLabel={loadingLabel}
       />
       <ChatInput
         value={input}
@@ -50,6 +64,9 @@ export function ChatArea({
         disabled={!canSend}
         streaming={streaming}
         placeholder={placeholder}
+        thinkingLevel={thinkingLevel}
+        contextUsed={contextUsed}
+        contextWindow={contextWindow}
       />
     </>
   )

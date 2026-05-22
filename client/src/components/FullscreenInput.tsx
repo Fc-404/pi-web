@@ -1,6 +1,14 @@
 import { useRef, type KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 
+const thinkingBorderColors: Record<string, string> = {
+  off: '#d4d4d8',
+  low: '#22d3ee',
+  medium: '#60a5fa',
+  high: '#818cf8',
+  xhigh: '#8b5cf6',
+}
+
 export function FullscreenInput({
   value,
   onChange,
@@ -9,6 +17,7 @@ export function FullscreenInput({
   onClose,
   disabled,
   streaming,
+  thinkingLevel,
 }: {
   value: string
   onChange: (val: string) => void
@@ -17,6 +26,7 @@ export function FullscreenInput({
   onClose: () => void
   disabled: boolean
   streaming: boolean
+  thinkingLevel?: string
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -40,17 +50,18 @@ export function FullscreenInput({
         onChange={e => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="输入消息..."
-        className="flex-1 w-full p-5 text-base resize-none outline-none"
-        disabled={disabled}
+        className="flex-1 w-full p-5 text-base resize-none outline-none transition-colors duration-300 border"
+        style={{ borderColor: thinkingBorderColors[thinkingLevel || 'high'] || '#d4d4d8' }}
+        disabled={disabled && !streaming}
       />
       <div className="p-4 border-t border-zinc-200">
-        {streaming ? (
+        {streaming && !value.trim() ? (
           <Button onClick={onStop} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white">
             停止生成
           </Button>
         ) : (
-          <Button onClick={onSend} disabled={disabled || !value.trim()} className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white">
-            发送
+          <Button onClick={onSend} disabled={!value.trim()} className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-zinc-300">
+            {streaming ? '排队发送' : '发送'}
           </Button>
         )}
       </div>

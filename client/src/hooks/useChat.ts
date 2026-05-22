@@ -1,8 +1,8 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { HistoryMessage } from '../lib/api'
 
 /**
- * 聊天消息管理（含 SSE 流式接收）
+ * 聊天消息管理（含 SSE 流式接收 + 消息队列）
  */
 export function useChat() {
   const [chatMessages, setChatMessages] = useState<HistoryMessage[]>([])
@@ -10,7 +10,17 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const clearMessages = useCallback(() => setChatMessages([]), [])
+  // 消息队列（ref 方式避免闭包问题）
+  const pendingQueueRef = useRef<string[]>([])
+  const streamingRef = useRef(false)
+
+  // 同步 streaming 到 ref
+  useEffect(() => { streamingRef.current = streaming }, [streaming])
+
+  const clearMessages = useCallback(() => {
+    setChatMessages([])
+    pendingQueueRef.current = []
+  }, [])
 
   const replaceMessages = useCallback((msgs: HistoryMessage[]) => {
     setChatMessages(msgs)
@@ -18,7 +28,6 @@ export function useChat() {
 
   /**
    * 追加文本或思考到当前 assistant 消息。
-   * 如果最后一条消息不是 assistant，则先新建一条空 assistant 消息。
    */
   const appendToAssistant = useCallback((field: 'content' | 'thinking', delta: string) => {
     setChatMessages(prev => {
@@ -38,19 +47,17 @@ export function useChat() {
     })
   }, [])
 
-  /** 发送消息，返回 SSE 流并逐步更新聊天内容 */
-  const sendMessage = useCallback(async (
+  /** 内部发送逻辑（不检查 streaming，直接发） */
+  const doSend = useCallback(async (
     text: string,
-    activeId: string | null,
+    activeId: string,
     onComplete?: () => void,
   ) => {
-    if (!text.trim() || streaming || !activeId) return
-
     setError(null)
+    streamingRef.current = true
     setStreaming(true)
 
-    // 添加用户消息 + 占位 assistant 消息
-    setChatMessages(prev => [...prev, { role: 'user', content: text }])
+    // 添加占位 assistant 消息
     setChatMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
     try {
@@ -83,7 +90,6 @@ export function useChat() {
           try {
             const event = JSON.parse(dataStr)
 
-            // 文本增量
             let textDelta = ''
             let thinkingDelta = ''
 
@@ -99,7 +105,6 @@ export function useChat() {
             if (textDelta) appendToAssistant('content', textDelta)
             if (thinkingDelta) appendToAssistant('thinking', thinkingDelta)
 
-            // 工具调用开始 → 添加 toolCall 消息
             if (event.type === 'tool_execution_start') {
               setChatMessages(prev => [...prev, {
                 role: 'toolCall',
@@ -109,7 +114,6 @@ export function useChat() {
               }])
             }
 
-            // 工具调用结束 → 添加 toolResult 消息
             if (event.type === 'tool_execution_end') {
               let text = ''
               for (const c of event.result?.content || []) {
@@ -127,20 +131,50 @@ export function useChat() {
         }
       }
 
-      // SSE 正常结束，触发完成回调（刷新完整消息，替换实时拼装的内容）
       onComplete?.()
     } catch (err: any) {
       if (err.name !== 'AbortError') setError(err.message)
     } finally {
+      streamingRef.current = false
       setStreaming(false)
       abortRef.current = null
+
+      // SSE 结束后，检查队列并自动发送下一条
+      const next = pendingQueueRef.current.shift()
+      if (next) {
+        await doSend(next, activeId, onComplete)
+      }
     }
-  }, [streaming, appendToAssistant])
+  }, [appendToAssistant])
+
+  /** 发送消息：如果正在 streaming 则入队，否则直接发送 */
+  const sendMessage = useCallback(async (
+    text: string,
+    activeId: string | null,
+    onComplete?: () => void,
+  ) => {
+    if (!text.trim() || !activeId) return
+
+    // 先把用户消息加入聊天区
+    setChatMessages(prev => [...prev, { role: 'user', content: text }])
+
+    // 如果正在生成，入队等待
+    if (streamingRef.current) {
+      pendingQueueRef.current = [...pendingQueueRef.current, text]
+      return
+    }
+
+    // 直接发送
+    await doSend(text, activeId, onComplete)
+  }, [doSend])
 
   const stopGeneration = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
   }, [])
 
-  return { chatMessages, streaming, error, setError, sendMessage, clearMessages, replaceMessages, stopGeneration }
+  return {
+    chatMessages, streaming, error, setError,
+    sendMessage, clearMessages, replaceMessages, stopGeneration,
+  }
 }

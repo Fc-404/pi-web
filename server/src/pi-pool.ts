@@ -203,6 +203,37 @@ class PiPool {
     if (!this._activeId) return []
     return getSessionMessages(this._activeId)
   }
+
+  /**
+   * 获取指定会话的运行时状态（模型、思考级别等）
+   */
+  async getSessionState(sessionFile: string): Promise<Record<string, unknown>> {
+    const entry = this.pool.get(sessionFile)
+    if (!entry || !entry.client.running) {
+      return { status: 'stopped', message: 'Session is not running' }
+    }
+    try {
+      return await entry.client.getState()
+    } catch (err: any) {
+      throw new Error(`Failed to get session state: ${err.message}`)
+    }
+  }
+
+  async setModel(sessionFile: string, provider: string, modelId: string): Promise<void> {
+    const entry = this.pool.get(sessionFile)
+    if (!entry || !entry.client.running) {
+      throw new Error('Session is not running')
+    }
+    await entry.client.setModel(provider, modelId)
+  }
+
+  async setThinkingLevel(sessionFile: string, level: string): Promise<void> {
+    const entry = this.pool.get(sessionFile)
+    if (!entry || !entry.client.running) {
+      throw new Error('Session is not running')
+    }
+    await entry.client.setThinkingLevel(level)
+  }
 }
 
 // 全局单例
