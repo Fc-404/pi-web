@@ -23,50 +23,52 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [indicator, setIndicator] = useState({ left: 0, width: 0 })
 
+  const barRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     const idx = tabs.findIndex(t => t.key === activeTab)
     const el = tabRefs.current[idx]
-    if (el) {
-      setIndicator({ left: el.offsetLeft, width: el.offsetWidth })
+    if (el && barRef.current) {
+      const barRect = barRef.current.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+      setIndicator({ left: elRect.left - barRect.left, width: el.offsetWidth })
     }
   }, [activeTab])
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* 导航标签 — 单一容器响应式，与 ChatHeader 同高 */}
-      <div className="border-b border-zinc-200 bg-white flex-shrink-0">
-        {/* 容器样式与 ChatHeader 完全一致 */}
-        <div className="flex items-center gap-2 px-4 md:px-5 py-3">
-          {/* 移动端汉堡菜单 */}
-          {onToggleSidebar && (
-            <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0 self-center">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </Button>
-          )}
-          {/* 标签容器 */}
-          <div className="relative flex items-end gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden flex-1 self-stretch">
-            {tabs.map((tab, i) => (
-              <button
-                key={tab.key}
-                ref={(el) => { tabRefs.current[i] = el }}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-3 pb-3 pt-3 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
-                  activeTab === tab.key
-                    ? 'text-indigo-600 font-medium'
-                    : 'text-zinc-500 hover:text-zinc-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-            <div
-              className="absolute bottom-0 h-0.5 bg-indigo-500 transition-all duration-300 ease-out"
-              style={{ left: indicator.left, width: indicator.width }}
-            />
-          </div>
-        </div>
+      {/* 标签栏 */}
+      <div className="flex items-end gap-2 px-4 md:px-5 pt-1 pb-3 bg-white flex-shrink-0">
+        {/* 移动端汉堡菜单 */}
+        {onToggleSidebar && (
+          <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0 self-center">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </Button>
+        )}
+        {/* 标签 */}
+        {tabs.map((tab, i) => (
+          <button
+            key={tab.key}
+            ref={(el) => { tabRefs.current[i] = el }}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-3 pb-3 pt-1 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
+              activeTab === tab.key
+                ? 'text-indigo-600 font-medium'
+                : 'text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {/* 底部线 + 滑块（独立容器，不受 padding 影响） */}
+      <div ref={barRef} className="relative h-px bg-zinc-200 mx-4 md:mx-5">
+        <div
+          className="absolute top-[-0.5px] h-0.5 bg-indigo-500 transition-all duration-300 ease-out z-10"
+          style={{ left: indicator.left, width: indicator.width }}
+        />
       </div>
 
       {/* 内容区 */}
