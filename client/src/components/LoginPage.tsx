@@ -3,20 +3,28 @@
  */
 import { useState } from 'react'
 import { setToken, hashPassword } from '../lib/auth'
+import { useToast } from './Toast'
 import { LoadingDots } from './LoadingDots'
 
 export function LoginPage({ onLogin }: { onLogin: () => void }) {
+  const { showToast } = useToast()
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
 
     try {
-      const hashed = await hashPassword(password)
+      let hashed: string
+      try {
+        hashed = await hashPassword(password)
+      } catch {
+        showToast('当前环境不支持密码加密，请使用 localhost 或 HTTPS 访问', 'error')
+        setLoading(false)
+        return
+      }
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -24,13 +32,14 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || '登录失败')
+        showToast(data.error || '登录失败', 'error')
+        setLoading(false)
         return
       }
       setToken(data.token)
       onLogin()
     } catch {
-      setError('网络错误')
+      showToast('网络错误，请检查后端是否运行', 'error')
     } finally {
       setLoading(false)
     }
@@ -52,9 +61,6 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
               autoFocus
               className="w-full px-4 py-2.5 rounded-xl border border-zinc-300 text-sm outline-none focus:border-indigo-400 transition-colors"
             />
-            {error && (
-              <p className="text-sm text-red-500">{error}</p>
-            )}
             <button
               type="submit"
               disabled={loading || !password}

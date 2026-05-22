@@ -12,11 +12,9 @@ function App() {
     setOnUnauthorized(() => setLoggedIn(false))
   }, [])
 
-  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
-
   return (
     <ToastProvider>
-      <MainLayout />
+      {loggedIn ? <MainLayout /> : <LoginPage onLogin={() => setLoggedIn(true)} />}
     </ToastProvider>
   )
 }
