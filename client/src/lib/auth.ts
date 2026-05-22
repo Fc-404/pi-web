@@ -20,12 +20,9 @@ export function isLoggedIn(): boolean {
   return !!getToken()
 }
 
-/** SHA-256 哈希密码，与后端一致 */
-export async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hash = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
+import CryptoJS from 'crypto-js'
+
+/** SHA-256 哈希密码，与后端一致（crypto-js，任何环境可用） */
+export function hashPassword(password: string): string {
+  return CryptoJS.SHA256(password).toString()
 }

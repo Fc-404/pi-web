@@ -113,10 +113,8 @@ function SettingsForm() {
 
     setLoading(true)
     try {
-      const [oldHashed, newHashed] = await Promise.all([
-        hashPassword(oldPassword),
-        hashPassword(newPassword),
-      ])
+      const oldHashed = hashPassword(oldPassword)
+      const newHashed = hashPassword(newPassword)
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: {

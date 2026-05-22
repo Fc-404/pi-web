@@ -16,14 +16,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
     setLoading(true)
 
     try {
-      let hashed: string
-      try {
-        hashed = await hashPassword(password)
-      } catch {
-        showToast('当前环境不支持密码加密，请使用 localhost 或 HTTPS 访问', 'error')
-        setLoading(false)
-        return
-      }
+      const hashed = hashPassword(password)
 
       const res = await fetch('/api/auth/login', {
         method: 'POST',
