@@ -23,14 +23,28 @@ pi 保存的对话记录。格式为 `.jsonl`（每行一个 JSON 事件），�
 标题可通过前端编辑，后端追加一条 `session_info` 事件到 jsonl 文件末尾。
 
 ### 消息类型（HistoryMessage）
-前端定义的消息类型，四种角色：
+前端定义的消息类型，五种角色：
 
 | 角色 | 说明 | 关键字段 |
 |:-----|:------|:---------|
-| `user` | 用户消息 | `content` |
-| `assistant` | AI 回复 | `content`、`thinking`（思考过程） |
-| `toolCall` | AI 调用工具 | `toolName`、`toolCallId`、`content`（参数 JSON） |
-| `toolResult` | 工具执行结果 | `toolName`、`toolCallId`、`content`（输出文本）、`isError` |
+| `user` | 用户消息 | `content`、`timestamp` |
+| `assistant` | AI 回复 | `content`、`thinking`、`usage`、`model`、`timestamp` |
+| `toolCall` | 工具调用 | `toolName`、`toolCallId`、`content`（参数 JSON）、`isError`（中断时） |
+| `toolResult` | 工具执行结果 | `toolName`、`toolCallId`、`content`（输出文本）、`isError`、`callArgs`（调用参数，用于摘要） |
+| `system` | 系统事件提示 | `content`（如"切换模型: xxx"）、`timestamp` |
+
+#### system 事件来源
+从 jsonl 中的非 message 事件解析：
+- `model_change` → "切换模型: {provider}/{modelId}"
+- `thinking_level_change` → "思考模式: {level}"
+- `session_info` → "重命名: {name}"
+
+渲染为分隔线 `─── 提示信息 ───` 样式。
+
+#### toolCall 与 toolResult 的关联
+- 后端解析 assistant 消息时，从 `content` 中提取 toolCall 参数缓存（`pendingCallArgs`）
+- 解析 toolResult 时按 `toolCallId` 匹配，参数附在 `callArgs` 字段上
+- 未匹配的 toolCall（被中断）作为独立 toolCall 消息追加到末尾
 
 ### 会话状态
 运行时状态，由 PiPool 管理，不依赖外部文件：
@@ -60,7 +74,9 @@ SSE 正常结束后，自动调用 `fetchSessionMessages` 从后端 jsonl 文件
 
 ### 发送/停止机制
 - 发送消息时，前端用 `AbortController` 控制 SSE fetch 请求
-- 发送后按钮变为红色停止方块，点击停止调用 `abortRef.current.abort()`
+- AI 回复中 + 输入框为空 → 红色停止按钮
+- AI 回复中 + 输入框有文字 → 蓝色发送按钮（**消息队列**：入队不中断当前回复）
+- 当前 AI 回复完成后自动发送队列中的下一条消息
 - 停止后 `streaming` 状态置为 false，按钮恢复为发送状态
 
 ### pi-web 后端
@@ -83,21 +99,27 @@ React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。
 |:-----|:------|
 | `useSessions` | 会话列表获取、新建、删除 |
 | `usePoolStatus` | 轮询进程池状态（每秒） |
-| `useChat` | 聊天消息状态、SSE 流式接收、停止生成 |
+| `useChat` | 聊天消息状态、SSE 流式接收、停止生成、消息队列 |
 | `useSessionActions` | 会话操作封装（打开/切换/关闭） |
+| `useChatContext` | 聊天共享 Context（messages、streaming、thinkingLevel 等） |
 
 **组件层：**
 
 | 组件 | 职责 |
 |:-----|:------|
-| `Sidebar` | 侧边栏（会话列表、新建、关闭全部） |
-| `ChatArea` | 聊天区域容器 |
-| `ChatHeader` | 标题、状态灯、编辑标题、关闭 |
-| `ChatMessages` | 消息列表 + 悬浮一键到底按钮 |
-| `MessageBubble` | 单条消息气泡（含 thinking、toolCall、toolResult 的折叠显示） |
-| `ChatInput` | 输入框 + 发送/停止按钮 + 全屏编辑 |
+| `Sidebar` | 侧边栏（会话列表、新建、终止、关闭全部），PC 静态 + 移动端 Sheet |
+| `ChatHeader` | 标题栏（PC/移动端合一），状态灯、标题编辑、设置按钮、加载进度条 |
+| `ChatMessages` | 消息列表 + 悬浮一键到底按钮 + 加载状态 |
+| `MessageBubble` | 单条消息气泡（含 system 分隔线、thinking/toolCall/toolResult 折叠） |
+| `ChatInput` | 输入框 + 发送/停止按钮 + 全屏编辑 + 上下文进度条 + 思考级别边框色 |
 | `FullscreenInput` | 全屏输入界面 |
 | `ConfirmDialog` | 删除确认弹窗 |
+| `SettingsPanel` | 设置面板（模型/思考模式/折叠默认态/信息栏开关），底部取消/应用 |
+| `Toast` | 顶部弹出消息提示（成功/错误/警告/信息），3 秒自动消失 |
+
+**额外 UI：**
+- **上下文进度条** — ChatInput 上方 `h-px` 线条，颜色绿→黄→红
+- **加载进度条** — ChatHeader 底部 `h-px`，替换 `border-b`，完成后变绿延迟 800ms
 
 ### 通信方式
 - **API（REST）**：会话列表、打开/关闭/删除/重命名会话、新建会话、获取历史消息
