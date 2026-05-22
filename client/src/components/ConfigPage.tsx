@@ -23,22 +23,14 @@ export function ConfigPage({ onClose }: ConfigPageProps) {
 
   return (
     <div className="h-dvh bg-white flex flex-col">
-      {/* 顶栏 */}
-      <header className="flex items-center gap-3 px-5 py-4 border-b border-zinc-200 flex-shrink-0">
-        <button
-          onClick={onClose}
-          className="p-1 -ml-1 rounded-lg hover:bg-zinc-100 transition-colors"
-        >
-          <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
+      {/* 顶栏 — 标题头风格 */}
+      <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 flex-shrink-0">
         <h1 className="text-base font-semibold text-zinc-800">配置</h1>
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="flex items-center gap-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => { if (tab.key === activeTab) onClose(); else setActiveTab(tab.key) }}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-indigo-50 text-indigo-700'
