@@ -33,35 +33,12 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* 导航标签 — 与 ChatHeader 同高 */}
+      {/* 导航标签 — 单一容器响应式，与 ChatHeader 同高 */}
       <div className="border-b border-zinc-200 bg-white flex-shrink-0">
-        {/* PC */}
-        <div className="hidden md:flex items-center gap-2 px-5 py-3">
-          <div className="relative flex items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden flex-1">
-            {tabs.map((tab, i) => (
-              <button
-                key={tab.key}
-                ref={(el) => { tabRefs.current[i] = el }}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-0.5 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
-                  activeTab === tab.key
-                    ? 'text-indigo-600 font-medium'
-                    : 'text-zinc-500 hover:text-zinc-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-            <div
-              className="absolute bottom-0 h-0.5 bg-indigo-500 transition-all duration-300 ease-out"
-              style={{ left: indicator.left, width: indicator.width }}
-            />
-          </div>
-        </div>
-        {/* 移动端 — 汉堡菜单 + 标签同一行 */}
-        <div className="flex md:hidden items-center gap-2 px-4 py-3">
+        <div className="flex items-center gap-2 px-4 md:px-5 py-3">
+          {/* 移动端汉堡菜单 */}
           {onToggleSidebar && (
-            <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="flex-shrink-0">
+            <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
