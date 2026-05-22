@@ -2,7 +2,7 @@
  * 登录页
  */
 import { useState } from 'react'
-import { setToken } from '../lib/auth'
+import { setToken, hashPassword } from '../lib/auth'
 import { LoadingDots } from './LoadingDots'
 
 export function LoginPage({ onLogin }: { onLogin: () => void }) {
@@ -16,10 +16,11 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
     setLoading(true)
 
     try {
+      const hashed = await hashPassword(password)
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: hashed }),
       })
       const data = await res.json()
       if (!res.ok) {

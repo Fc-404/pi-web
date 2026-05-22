@@ -6,7 +6,8 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { getToken } from '../lib/auth'
+import { getToken, hashPassword } from '../lib/auth'
+import { useToast } from './Toast'
 import { LoadingDots } from './LoadingDots'
 
 type Tab = 'settings' | 'prompts' | 'service' | 'about'
@@ -92,46 +93,49 @@ export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => voi
 
 /** 修改密码 — 扁平化，非卡片，自适应宽度 */
 function SettingsForm() {
+  const { showToast } = useToast()
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setMessage(null)
 
     if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: '两次密码不一致' })
+      showToast('两次密码不一致', 'error')
       return
     }
     if (newPassword.length < 6) {
-      setMessage({ type: 'error', text: '密码至少 6 位' })
+      showToast('密码至少 6 位', 'error')
       return
     }
 
     setLoading(true)
     try {
+      const [oldHashed, newHashed] = await Promise.all([
+        hashPassword(oldPassword),
+        hashPassword(newPassword),
+      ])
       const res = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ oldPassword, newPassword }),
+        body: JSON.stringify({ oldPassword: oldHashed, newPassword: newHashed }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.error || '修改失败' })
+        showToast(data.error || '修改失败', 'error')
         return
       }
-      setMessage({ type: 'success', text: '密码已修改' })
+      showToast('密码已修改', 'success')
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch {
-      setMessage({ type: 'error', text: '网络错误' })
+      showToast('网络错误', 'error')
     } finally {
       setLoading(false)
     }
@@ -178,12 +182,6 @@ function SettingsForm() {
           />
         </div>
       </div>
-
-      {message && (
-        <p className={`mt-4 text-sm ${message.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
-          {message.text}
-        </p>
-      )}
 
       <div className="mt-6">
         <button
