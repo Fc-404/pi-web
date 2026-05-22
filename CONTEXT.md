@@ -70,7 +70,7 @@ pi 保存的对话记录。格式为 `.jsonl`（每行一个 JSON 事件），�
 | `agent_end` | 本次生成结束 | 触发 onComplete 回调，刷新完整消息列表 |
 | `message_update` | 消息状态快照 | 从中提取 text_delta / thinking_delta |
 
-SSE 正常结束后，自动调用 `fetchSessionMessages` 从后端 jsonl 文件刷新完整消息列表，确保工具调用等内容的完整性和正确顺序。
+SSE 正常结束后，自动调用**增量补全**（仅拉取新增行），合并到 IndexedDB 缓存中替换消息列表，避免全量刷新。
 
 ### 发送/停止机制
 - 发送消息时，前端用 `AbortController` 控制 SSE fetch 请求
@@ -87,7 +87,7 @@ Node.js + TypeScript + Hono 实现的 Web 服务。负责：
 | `index.ts` | API 路由注册（瘦路由层） |
 | `pi-pool.ts` | PiPool 多进程池管理 |
 | `rpc-client.ts` | pi RPC 子进程通信 |
-| `session-store.ts` | 会话文件存储层，统一封装会话文件 I/O 和 jsonl 解析 |
+| `session-store.ts` | 会话文件存储层，统一封装会话文件 I/O 和 jsonl 解析；提供 `getMessagesIncremental(since?)` 支持增量读取 |
 | `chat-stream.ts` | SSE 流式聊天管道，将 PiPool 事件流通过 SSE 输出 |
 
 ### pi-web 前端
@@ -101,6 +101,7 @@ React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。
 | `usePoolStatus` | 轮询进程池状态（每秒） |
 | `useChat` | 聊天消息状态、SSE 流式接收、停止生成、消息队列 |
 | `useSessionActions` | 会话操作封装（打开/切换/关闭） |
+| `useSessionManager` | 会话状态管理层，聚合 useSessions + usePoolStatus，集成 IndexedDB 缓存 + 增量同步逻辑 |
 | `useChatContext` | 聊天共享 Context（messages、streaming、thinkingLevel 等） |
 
 **组件层：**
@@ -116,13 +117,41 @@ React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。
 | `ConfirmDialog` | 删除确认弹窗 |
 | `SettingsPanel` | 设置面板（模型/思考模式/折叠默认态/信息栏开关），底部取消/应用 |
 | `Toast` | 顶部弹出消息提示（成功/错误/警告/信息），3 秒自动消失 |
+| `db.ts` | IndexedDB 封装，提供会话消息缓存的读写/删除操作 |
 
 **额外 UI：**
 - **上下文进度条** — ChatInput 上方 `h-px` 线条，颜色绿→黄→红
 - **加载进度条** — ChatHeader 底部 `h-px`，替换 `border-b`，完成后变绿延迟 800ms
 
+### 增量同步 (Incremental Sync)
+前端通过 IndexedDB 缓存历史消息，切换会话时仅拉取新增的 jsonl 行，避免全量传输和重复解析。
+
+#### 行号 seq
+jsonl 文件中每行（过滤空行后）有一个隐式行号（从 0 开始），作为增量标识。前端缓存 `lastSeq`（已处理的最后行号），增量请求传 `since=<lastSeq>`，后端只返回行号 > since 的消息。
+
+#### IndexedDB 缓存
+浏览器端持久化缓存，存储结构：
+```
+DB: pi-web | Store: sessionCache
+Key: sessionFile → { messages: HistoryMessage[], lastSeq: number, totalLines: number }
+```
+
+#### 增量补全 (Incremental Refresh)
+SSE 结束后不再全量拉取，而是调用 `GET /api/sessions/messages?file=xxx&since=<lastSeq>` 仅获取新增行，合并到缓存后替换 UI。
+
+#### 一致性保障
+- **reset 机制**：后端检测到 `since >= totalLines`（文件被重建）时返回 `reset: true`，前端清缓存全量重拉
+- **异常兜底**：增量 API 失败时降级为全量拉取，不影响消息展示
+
+#### 增量 API
+```
+GET /api/sessions/messages?file=xxx           → { messages, totalLines }    // 全量
+GET /api/sessions/messages?file=xxx&since=42   → { messages, totalLines }    // 增量
+                                                 → { messages:[], reset:true } // 文件重建
+```
+
 ### 通信方式
-- **API（REST）**：会话列表、打开/关闭/删除/重命名会话、新建会话、获取历史消息
+- **API（REST）**：会话列表、打开/关闭/删除/重命名会话、新建会话、获取历史消息（支持增量参数 `since`）
 - **SSE（Server-Sent Events）**：聊天消息流式输出，每次发送消息时建立一个 SSE 连接
 - **pi RPC 协议**：pi-web 后端通过 RpcClient 启动 `pi --mode rpc` 子进程，通过 stdin/stdout JSON Lines 通信
 
