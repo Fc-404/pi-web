@@ -109,6 +109,7 @@ React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。
 | `useSessionActions` | 会话操作封装（打开/切换/关闭） |
 | `useSessionManager` | 会话状态管理层，聚合 useSessions + usePoolStatus，集成 IndexedDB 缓存 + 增量同步逻辑 |
 | `useChatContext` | 聊天共享 Context（messages、streaming、thinkingLevel 等） |
+| `useChatActions` | 所有业务逻辑聚合层（会话操作、聊天操作、命令处理、自动加载） |
 
 **组件层：**
 
@@ -124,6 +125,10 @@ React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。
 | `SettingsPanel` | 设置面板（模型/思考模式/折叠默认态/信息栏开关），底部取消/应用 |
 | `Toast` | 顶部弹出消息提示（成功/错误/警告/信息），3 秒自动消失 |
 | `db.ts` | IndexedDB 封装，提供会话消息缓存的读写/删除操作 |
+| `CommandMenu` | 命令菜单（输入 `/` 触发，支持键盘导航） |
+| `ConfigContent` | 配置页（导航标签：设置/提示词/服务/关于） |
+| `LoginPage` | 登录页，密码 SHA-256 加盐后传输 |
+| `LoadingDots` | 三点加载动画组件 |
 
 **额外 UI：**
 - **上下文进度条** — ChatInput 上方 `h-px` 线条，颜色绿→黄→红
@@ -156,8 +161,17 @@ GET /api/sessions/messages?file=xxx&since=42   → { messages, totalLines }    /
                                                  → { messages:[], reset:true } // 文件重建
 ```
 
+### 命令系统
+输入框以 `/` 开头触发命令菜单（`CommandMenu` 组件），支持键盘 ↑↓ 选择、Enter 执行。
+
+#### /compress — 压缩上下文
+调用 pi RPC 内置 `compact` 命令，AI 总结对话历史后替换为摘要。
+- 后端暂停广播 → 发 `compact` 给 pi → 等待响应（最长 120 秒）→ 恢复广播
+- 压缩期间前端 Toast 提示「正在压缩上下文...」
+- 完成后替换消息列表
+
 ### 通信方式
-- **API（REST）**：会话列表、打开/关闭/删除/重命名会话、新建会话、获取历史消息（支持增量参数 `since`）
+- **API（REST）**：会话列表、打开/关闭/删除/重命名会话、新建会话、获取历史消息（支持增量参数 `since`）、压缩上下文
 - **SSE（Server-Sent Events）**：聊天消息流式输出，每次发送消息时建立一个 SSE 连接
 - **pi RPC 协议**：pi-web 后端通过 RpcClient 启动 `pi --mode rpc` 子进程，通过 stdin/stdout JSON Lines 通信
 
@@ -187,11 +201,13 @@ GET /api/sessions/messages?file=xxx&since=42   → { messages, totalLines }    /
 ### 生产部署架构
 ```
 用户 → piweb.xazh.top:80 (nginx auth_basic)
-  ├── / → proxy_pass → :8088 → 前端静态文件 (/var/www/piweb/client/)
-  └── /api/* → proxy_pass → :8089 → proxy_pass → :3000 (pm2 piweb-server)
+         ├── /           → serve 静态文件 (/var/www/piweb/client/)
+         └── /api/*      → proxy_pass → :8088 (pm2 piweb-server)
 ```
 
-- 前端：nginx 直接 serve 静态文件（端口 8088）
-- 后端：nginx 反向代理（端口 8089）→ pm2 守护的 Node.js（端口 3000）
-- 密码验证：nginx auth_basic，文件 `/etc/nginx/.htpasswd-piweb`
-- 进程管理：pm2，开机自启
+- 前端：nginx 直接 serve 静态文件（`root /var/www/piweb/client; try_files`）
+- 后端：pm2 守护的 Node.js（端口 8088），`/var/www/piweb/server/dist/index.js`
+- 密码验证：nginx auth_basic + 应用层 JWT 双重鉴权
+- nginx 配置：`/etc/nginx/sites-available/piweb.xazh.top` → `sites-enabled/`
+- pm2 管理：`/home/xazh/.npm-global/bin/pm2`，开机自启
+- 密码文件：`/etc/nginx/.htpasswd-piweb`，用户 `xazh`

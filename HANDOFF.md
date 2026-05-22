@@ -1,7 +1,7 @@
 # pi-web — 交接文档
 
 > 生成时间：2026-05-22
-> 版本：v0.2.0
+> 版本：v1.0.0
 
 ## 项目概况
 
@@ -10,7 +10,12 @@ pi-web 是一个独立 Web 服务，用于在浏览器中浏览和与 pi AI codi
 - **项目目录**：`/home/xazh/code/pi-web/`
 - **技术栈**：React 19 + shadcn/ui + Tailwind CSS v4 + Hono + TypeScript + pm2
 - **开发模式**：`npm run dev`（根目录），后端在 `server/` 下 `PORT=9099 npx tsx src/index.ts`
-- **生产环境**：pm2 管理（端口 3000），**不要动生产环境**
+- **生产环境**：pm2 管理（端口 8088），`/var/www/piweb/server/`
+  - 前端：`/var/www/piweb/client/`，nginx 直 serve
+  - 后端：`/var/www/piweb/server/dist/index.js`，pm2 守护
+  - nginx 配置：`/etc/nginx/sites-available/piweb.xazh.top`
+  - pm2：`/home/xazh/.npm-global/bin/pm2`
+  - **不要直接动生产环境**，走 dev → main 发布流程
 
 ## 分支说明
 
@@ -55,7 +60,12 @@ pi-web 是一个独立 Web 服务，用于在浏览器中浏览和与 pi AI codi
 | 思考级别边框色 | 输入框边框颜色随思考级别变化 |
 | 紫蓝色主题 | 全部 sky → indigo |
 | 全局 outline 禁用 | 所有 input/textarea/select 无聚焦外环 |
-| **增量同步** 🆕 | IndexedDB 缓存 + 行号 seq + 增量拉取，切换会话秒开 |
+| **增量同步** ✅ | IndexedDB 缓存 + 行号 seq + 增量拉取，切换会话秒开 |
+| **命令系统** 🆕 | 输入 `/` 弹出命令菜单，`/compress` 压缩上下文 |
+| **压缩上下文** 🆕 | 调用 pi RPC 内置 `compact` 命令，AI 总结替换历史 |
+| **JWT 鉴权** 🆕 | 登录页 + Token 管理 + 7 天过期 + 密码加盐哈希 |
+| **配置页** 🆕 | 侧边栏扳手入口，导航标签，修改密码 |
+| **LoadingDots** 🆕 | 三点加载动画替代圆圈 spinner |
 
 ### 🏗 架构重构已完成
 
@@ -90,9 +100,11 @@ pi-web 是一个独立 Web 服务，用于在浏览器中浏览和与 pi AI codi
 3. **后端 tsx watch** — 使用 `tsx watch` 时 `import.meta.dirname` 为 `undefined`，已改用 `fileURLToPath(import.meta.url)` + `path.dirname`
 4. **ScrollArea 白屏** — base-ui 的 ScrollArea 在 flex 容器中 `size-full` 高度计算有问题，已恢复为手写 `overflow-y-auto`
 5. **进度条状态更新** — 用 `setTimeout` 而非 `await delay` 避免 setState 合并
-6. **端口配置** — 开发版后端默认 `9099`，生产环境 `3000`
+6. **端口配置** — 开发版后端 `9099`，生产环境 `8088`
 7. **生产目录**：`/var/www/piweb/{client/, server/}`，pm2 管理
-8. **密码文件**：`/etc/nginx/.htpasswd-piweb`，用户 `xazh`
+8. **nginx 配置**：`/etc/nginx/sites-available/piweb.xazh.top`
+9. **密码文件**：`/etc/nginx/.htpasswd-piweb`，用户 `xazh`
+10. **应用密码**：`/var/www/piweb/server/config.json`，SHA-256 加盐存储
 
 ## 核心文件清单
 
@@ -111,7 +123,8 @@ pi-web 是一个独立 Web 服务，用于在浏览器中浏览和与 pi AI codi
 | `client/src/hooks/useSessions.ts` | 会话列表 CRUD |
 | `client/src/hooks/usePoolStatus.ts` | 进程池状态轮询 |
 | `client/src/hooks/useSessionActions.ts` | 会话操作编排 |
-| `client/src/lib/db.ts` 🆕 | IndexedDB 缓存封装（增量同步核心） |
+| `client/src/lib/db.ts` | IndexedDB 缓存封装（增量同步核心） |
+| `client/src/lib/auth.ts` | Token 管理 + 密码 SHA-256 加盐哈希 |
 
 ### 组件
 
@@ -126,6 +139,12 @@ pi-web 是一个独立 Web 服务，用于在浏览器中浏览和与 pi AI codi
 | `client/src/components/Toast.tsx` | Toast 消息 |
 | `client/src/components/FullscreenInput.tsx` | 全屏输入 |
 | `client/src/components/ConfirmDialog.tsx` | 删除确认弹窗 |
+| `client/src/components/CommandMenu.tsx` | 命令菜单（/ 触发，键盘导航） |
+| `client/src/components/ConfigContent.tsx` | 配置页（导航标签分组） |
+| `client/src/components/LoginPage.tsx` | 登录页 |
+| `client/src/components/LoadingDots.tsx` | 三点加载动画 |
+| `client/src/hooks/useChatActions.ts` | 所有业务逻辑聚合层 |
+| `server/src/auth.ts` | JWT 鉴权 + 密码管理 |
 
 ## 建议优先使用的 skill
 
