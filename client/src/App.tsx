@@ -1,4 +1,36 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { LoginPage } from './components/LoginPage'
+import { ConfigPage } from './components/ConfigPage'
+import { isLoggedIn } from './lib/auth'
+import { setOnUnauthorized } from './lib/api'
+import { ToastProvider } from './components/Toast'
+
+function App() {
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn())
+  const [configOpen, setConfigOpen] = useState(false)
+
+  useEffect(() => {
+    setOnUnauthorized(() => setLoggedIn(false))
+  }, [])
+
+  // 未登录 → 登录页（不渲染任何 API 相关 hooks）
+  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
+
+  // 配置页
+  if (configOpen) return <ConfigPage onClose={() => setConfigOpen(false)} />
+
+  // 主界面（所有 hooks 都在这里，登录后才渲染）
+  return (
+    <ToastProvider>
+      <ChatApp onOpenConfig={() => setConfigOpen(true)} />
+    </ToastProvider>
+  )
+}
+
+export default App
+
+// ===== 主界面（登录后渲染） =====
+
 import { Button } from '@/components/ui/button'
 import { Sidebar } from './components/Sidebar'
 import { ChatHeader } from './components/ChatHeader'
@@ -11,25 +43,14 @@ import { useSessionManager } from './hooks/useSessionManager'
 import { fetchSessionMessages, fetchSessionMessagesIncremental, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
 import { getSessionCache, setSessionCache } from './lib/db'
 import { LoadingDots } from './components/LoadingDots'
-import { LoginPage } from './components/LoginPage'
-import { ConfigPage } from './components/ConfigPage'
-import { useToast } from './components/Toast'
 import { SettingsPanel } from './components/SettingsPanel'
-import { isLoggedIn } from './lib/auth'
-import { setOnUnauthorized } from './lib/api'
+import { useToast } from './components/Toast'
 
-function App() {
+function ChatApp({ onOpenConfig }: { onOpenConfig: () => void }) {
   const { showToast } = useToast()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [configOpen, setConfigOpen] = useState(false)
-  const [loggedIn, setLoggedIn] = useState(isLoggedIn())
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
-
-  // 注册 401 回调
-  useEffect(() => {
-    setOnUnauthorized(() => setLoggedIn(false))
-  }, [])
 
   // ── 会话管理（聚合层） ──
   const {
@@ -85,13 +106,8 @@ function App() {
       setError(err.message)
     }
 
-    // 缓存命中 → 快速消除加载态（200ms），全量加载 → 保留 800ms 过渡
     const delay = fromCache ? 200 : 800
-    setTimeout(() => {
-      setSwitchingId(null)
-      setLoadProgress(null)
-    }, delay)
-
+    setTimeout(() => { setSwitchingId(null); setLoadProgress(null) }, delay)
     setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
   }, [openOrSwitch, setSwitchingId, setPoolStatus, setError, clearMessages, replaceMessages])
 
@@ -116,9 +132,7 @@ function App() {
       const shouldClear = await deleteSession(sessionFile)
       if (shouldClear) clearMessages()
       showToast('会话已删除', 'success')
-    } catch {
-      showToast('删除失败', 'error')
-    }
+    } catch { showToast('删除失败', 'error') }
   }, [deleteSession, clearMessages, showToast])
 
   // 关闭当前活跃会话
@@ -128,20 +142,16 @@ function App() {
       await closeSessionOp(activeId)
       clearMessages()
       showToast('会话已关闭', 'info')
-    } catch {
-      showToast('关闭会话失败', 'error')
-    }
+    } catch { showToast('关闭会话失败', 'error') }
   }, [activeId, closeSessionOp, clearMessages, showToast])
 
-  // 关闭指定会话（给侧边栏终止按钮用）
+  // 关闭指定会话
   const handleCloseSession = useCallback(async (sessionFile: string) => {
     try {
       await closeSessionOp(sessionFile)
       if (activeId === sessionFile) clearMessages()
       showToast('会话已终止', 'info')
-    } catch {
-      showToast('终止会话失败', 'error')
-    }
+    } catch { showToast('终止会话失败', 'error') }
   }, [activeId, closeSessionOp, clearMessages, showToast])
 
   // 关闭全部
@@ -150,12 +160,10 @@ function App() {
       await closeAllSessions()
       clearMessages()
       showToast('已关闭全部会话', 'info')
-    } catch {
-      showToast('关闭全部会话失败', 'error')
-    }
+    } catch { showToast('关闭全部会话失败', 'error') }
   }, [closeAllSessions, clearMessages, showToast])
 
-  // 自动加载：刷新页面后，如果已有活跃会话，自动加载消息并写入缓存
+  // 自动加载
   const autoLoadedRef = useRef(false)
   useEffect(() => {
     if (sessionsLoading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
@@ -163,20 +171,11 @@ function App() {
     setAutoLoading(true)
     loadWithProgress(activeId).then(msgs => {
       if (msgs.length > 0) replaceMessages(msgs)
-      // 尝试建立缓存（失败不影响消息显示）
       fetchSessionMessagesIncremental(activeId)
-        .then(info => {
-          setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
-        })
-        .catch(() => {}) // 缓存写入失败忽略
-      setTimeout(() => {
-        setAutoLoading(false)
-        setLoadProgress(null)
-      }, 800)
-    }).catch(() => {
-      setAutoLoading(false)
-      setLoadProgress(null)
-    })
+        .then(info => { setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines }) })
+        .catch(() => {})
+      setTimeout(() => { setAutoLoading(false); setLoadProgress(null) }, 800)
+    }).catch(() => { setAutoLoading(false); setLoadProgress(null) })
   }, [sessionsLoading, activeId, activeSession, chatMessages.length, replaceMessages, loadWithProgress])
 
   // 获取当前思考级别 + 上下文使用情况
@@ -184,9 +183,7 @@ function App() {
     if (!activeId) return
     fetch(`/api/sessions/state?file=${encodeURIComponent(activeId)}`)
       .then(res => res.json())
-      .then(data => {
-        if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel)
-      })
+      .then(data => { if (data.thinkingLevel) setThinkingLevel(data.thinkingLevel) })
       .catch(() => {})
     fetch(`/api/sessions/context?file=${encodeURIComponent(activeId)}`)
       .then(res => res.json())
@@ -213,27 +210,22 @@ function App() {
   // 发消息
   const handleSend = useCallback(() => {
     sendMessage(input, activeId, async () => {
-      // SSE 结束后增量补全（非全量），保持缓存一致
       if (activeId) {
         try {
           const cached = await getSessionCache(activeId)
           if (cached) {
             const result = await fetchSessionMessagesIncremental(activeId, cached.lastSeq)
             if (result.reset) {
-              // 文件重建 → 全量重拉
               const msgs = await fetchSessionMessages(activeId)
               const info = await fetchSessionMessagesIncremental(activeId)
               await setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
               replaceMessages(msgs)
             } else if (result.messages.length > 0) {
-              // 有新增 → 合并缓存
               const newMessages = [...cached.messages, ...result.messages]
               await setSessionCache(activeId, { messages: newMessages, lastSeq: result.totalLines - 1, totalLines: result.totalLines })
               replaceMessages(newMessages)
             }
-            // 无新增 → SSE 已实时更新，不动
           } else {
-            // 无缓存（异常兜底）→ 全量
             const msgs = await fetchSessionMessages(activeId)
             const info = await fetchSessionMessagesIncremental(activeId)
             await setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
@@ -247,16 +239,9 @@ function App() {
 
   const isLoading = switchingId !== null || autoLoading
 
-  // 标题
   const title = activeSession?.title
     ? (activeSession.title.length > 9 ? activeSession.title.slice(0, 8) + '...' : activeSession.title)
     : ''
-
-  // 未登录 → 登录页
-  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
-
-  // 配置页
-  if (configOpen) return <ConfigPage onClose={() => setConfigOpen(false)} />
 
   if (sessionsLoading) return (
     <div className="h-dvh bg-zinc-50 flex items-center justify-center">
@@ -266,7 +251,6 @@ function App() {
 
   return (
     <div className="h-dvh bg-white text-zinc-800 flex flex-col overflow-hidden">
-      {/* 确认删除 */}
       {confirmDelete && (
         <ConfirmDialog
           title="删除会话"
@@ -276,7 +260,6 @@ function App() {
         />
       )}
 
-      {/* 设置面板 */}
       <SettingsPanel
         open={settingsOpen}
         onClose={handleCloseSettings}
@@ -296,14 +279,12 @@ function App() {
         activeId={activeId}
       />
 
-      {/* 新建遮罩 */}
       {creating && (
         <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex items-center justify-center">
           <LoadingDots label="正在新建会话..." />
         </div>
       )}
 
-      {/* 移动端顶部导航（仅无活跃会话时显示，有会话时由 ChatHeader 接管） */}
       {!activeSession && (
         <header className="flex md:hidden items-center gap-2 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">
           <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
@@ -331,27 +312,18 @@ function App() {
           onCloseAll={handleCloseAll}
           onCloseSidebar={() => setSidebarOpen(false)}
           onClose={handleCloseSession}
-          onOpenConfig={() => setConfigOpen(true)}
+          onOpenConfig={onOpenConfig}
         />
 
         <main className="flex-1 flex flex-col min-w-0">
           {activeId ? (
             <ChatContextProvider value={{
-              messages: chatMessages,
-              streaming,
-              chatError: error,
-              activeStatus: activeStatus,
-              loading: isLoading,
-              loadProgress,
-              thinkingLevel,
-              contextUsed,
-              contextWindow,
-              input,
-              title,
-              onInputChange: setInput,
-              onSend: handleSend,
-              onStop: stopGeneration,
-              onRename: handleRename,
+              messages: chatMessages, streaming, chatError: error,
+              activeStatus, loading: isLoading, loadProgress,
+              thinkingLevel, contextUsed, contextWindow,
+              input, title,
+              onInputChange: setInput, onSend: handleSend,
+              onStop: stopGeneration, onRename: handleRename,
               onOpenSettings: handleOpenSettings,
               onToggleSidebar: () => setSidebarOpen(v => !v),
               loadingLabel: isLoading ? (
@@ -381,5 +353,3 @@ function App() {
     </div>
   )
 }
-
-export default App
