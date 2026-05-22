@@ -314,7 +314,7 @@ export function MainLayout() {
               <ChatInput />
             </ChatContextProvider>
           ) : (
-            <div className="hidden md:flex flex-1 items-center justify-center">
+            <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-100 flex items-center justify-center">
                   <svg className="w-8 h-8 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
