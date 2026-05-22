@@ -93,6 +93,7 @@ export function MainLayout() {
               onStop: a.stopGeneration, onRename: a.handleRename,
               onOpenSettings: a.handleOpenSettings,
               onToggleSidebar: () => a.setSidebarOpen(v => !v),
+              onCommand: a.handleCommand,
               loadingLabel: a.isLoading ? (
                 a.loadProgress
                   ? `正在加载 ${(a.loadProgress.loaded / 1024).toFixed(0)}KB / ${(a.loadProgress.total / 1024).toFixed(0)}KB`

@@ -9,8 +9,8 @@ import { useChat } from './useChat'
 import { useSessionManager } from './useSessionManager'
 import {
   fetchSessionMessages, fetchSessionMessagesIncremental,
-  fetchSessionMessagesWithProgress, updateSessionSettings,
-  type SessionInfo,
+  fetchSessionMessagesWithProgress, compressSession,
+  updateSessionSettings, type SessionInfo,
 } from '../lib/api'
 import { getSessionCache, setSessionCache } from '../lib/db'
 import { useToast } from '../components/Toast'
@@ -196,6 +196,20 @@ export function useChatActions() {
     setInput('')
   }, [input, activeId, sendMessage, replaceMessages])
 
+  // ── 命令处理 ──
+  const handleCommand = useCallback(async (command: string) => {
+    if (command === 'compress') {
+      try {
+        showToast('正在压缩上下文...', 'info')
+        const msgs = await compressSession()
+        replaceMessages(msgs)
+        showToast('上下文已压缩', 'success')
+      } catch (err: any) {
+        showToast('压缩失败: ' + (err.message || '未知错误'), 'error')
+      }
+    }
+  }, [replaceMessages, showToast])
+
   // ── 设置面板 ──
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
@@ -232,6 +246,6 @@ export function useChatActions() {
     handleSessionClick, handleNewSession, handleDelete,
     handleCloseSession, handleCloseAll, handleRename,
     handleSend, stopGeneration, toggleGroup,
-    handleOpenSettings, handleCloseSettings, handleApplySettings,
+    handleCommand, handleOpenSettings, handleCloseSettings, handleApplySettings,
   }
 }

@@ -268,6 +268,10 @@ export function getMessages(sessionFile: string): HistoryMessage[] {
         messages.push({ role: 'system', content: `重命名: ${data.name}`, timestamp: new Date(data.timestamp).getTime() })
         continue
       }
+      if (type === 'context_compress') {
+        messages.push({ role: 'system', content: data.summary, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
       if (type !== 'message') continue
 
       const msg = data.message
@@ -386,6 +390,10 @@ export function getMessagesIncremental(sessionFile: string, since?: number): {
         messages.push({ role: 'system', content: `重命名: ${data.name}`, timestamp: new Date(data.timestamp).getTime() })
         continue
       }
+      if (type === 'context_compress') {
+        messages.push({ role: 'system', content: data.summary, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
       if (type !== 'message') continue
 
       const msg = data.message
@@ -478,4 +486,37 @@ export function getContext(sessionFile: string): SessionContext {
   }
 
   return { usedTokens, contextWindow, messageCount, cacheTokens }
+}
+
+/**
+ * 压缩上下文：保留 session header + 最近 N 条消息，中间替换为摘要提示
+ */
+export function compressMessages(sessionFile: string, keepCount = 25): { messages: HistoryMessage[]; totalLines: number } {
+  const fullPath = resolvePath(sessionFile)
+  const content = readFileSync(fullPath, 'utf-8')
+  const lines = content.split('\n').filter(l => l.trim())
+
+  if (lines.length <= keepCount + 2) {
+    // 消息太少，不需要压缩
+    return getMessagesIncremental(sessionFile)
+  }
+
+  // 保留 session header + 最近 keepCount 行
+  const header = lines[0]
+  const recentLines = lines.slice(-keepCount)
+  const removedCount = lines.length - keepCount - 1
+
+  const newLines = [
+    header,
+    JSON.stringify({
+      type: 'context_compress',
+      summary: `【上下文已压缩】移除了 ${removedCount} 条历史消息，保留了最近 ${keepCount} 条。`,
+      timestamp: new Date().toISOString(),
+    }),
+    ...recentLines,
+  ]
+
+  writeFileSync(fullPath, newLines.join('\n') + '\n')
+
+  return getMessagesIncremental(sessionFile)
 }

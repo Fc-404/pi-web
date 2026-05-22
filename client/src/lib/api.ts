@@ -177,6 +177,14 @@ export async function fetchSessionMessagesWithProgress(
   return JSON.parse(text).messages || []
 }
 
+/** 压缩当前会话上下文 */
+export async function compressSession(): Promise<HistoryMessage[]> {
+  const res = await apiFetch('/api/chat/compress', { method: 'POST' })
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+  const data = await res.json()
+  return data.messages || []
+}
+
 export async function updateSessionSettings(sessionFile: string, settings: {
   modelId?: string
   thinkingLevel?: string

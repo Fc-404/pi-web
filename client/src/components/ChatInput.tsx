@@ -2,6 +2,8 @@ import { useRef, useEffect, useState, type KeyboardEvent } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { FullscreenInput } from './FullscreenInput'
+import { CommandMenu } from './CommandMenu'
+import type { Command } from './CommandMenu'
 import { useChatContext } from '../hooks/useChatContext'
 
 const thinkingColors: Record<string, string> = {
@@ -23,11 +25,35 @@ export function ChatInput() {
     contextUsed,
     contextWindow,
     activeStatus,
+    onCommand,
   } = useChatContext()
   const disabled = activeStatus !== 'ready' || streaming
   const placeholder = activeStatus === 'starting' ? '启动中，暂不能发送消息...' : '输入消息...'
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
+  const [showCommands, setShowCommands] = useState(false)
+
+  // 命令列表
+  const commands: Command[] = [
+    {
+      id: 'compress',
+      label: '压缩上下文',
+      description: '移除历史消息，释放上下文空间',
+      execute: async () => {
+        await onCommand?.('compress')
+      },
+    },
+  ]
+
+  // 输入变化时检测是否需要显示命令菜单
+  const handleChange = (val: string) => {
+    onChange(val)
+    if (val === '/') {
+      setShowCommands(true)
+    } else if (!val.startsWith('/')) {
+      setShowCommands(false)
+    }
+  }
 
   // 自动撑高
   useEffect(() => {
@@ -40,6 +66,7 @@ export function ChatInput() {
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
+      if (showCommands) return // 命令菜单打开时，Enter 由菜单处理
       onSend()
     }
   }
@@ -76,17 +103,24 @@ export function ChatInput() {
       <div className="px-4 py-3 md:px-6">
       <div className="flex gap-2 items-end max-w-4xl mx-auto">
         <div className="flex-1 relative">
+          {showCommands && (
+            <CommandMenu
+              input={value}
+              commands={commands}
+              onClose={() => setShowCommands(false)}
+            />
+          )}
           <Textarea
-            ref={textareaRef}
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            rows={1}
-            disabled={disabled && !streaming}
-            className="min-h-[42px] max-h-[180px] py-[10px] transition-colors duration-300"
-            style={{ borderColor: thinkingColors[thinkingLevel || 'high'] || '#d4d4d8' }}
-          />
+              ref={textareaRef}
+              value={value}
+              onChange={e => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              rows={1}
+              disabled={disabled && !streaming}
+              className="min-h-[42px] max-h-[180px] py-[10px] transition-colors duration-300"
+              style={{ borderColor: thinkingColors[thinkingLevel || 'high'] || '#d4d4d8' }}
+            />
           {value.length > 60 && (
             <Button
               variant="ghost"

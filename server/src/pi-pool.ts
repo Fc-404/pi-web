@@ -1,7 +1,7 @@
 import { RpcClient, type AgentEvent } from './rpc-client.js'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { getMessages, remove, type HistoryMessage } from './session-store.js'
+import { getMessages, remove, compressMessages, type HistoryMessage } from './session-store.js'
 import type { SessionStatus } from '@pi-web/shared'
 
 const SESSION_DIR = join(homedir(), '.pi', 'agent', 'sessions')
@@ -215,6 +215,14 @@ export class PiPool {
     } catch (err: any) {
       throw new Error(`Failed to get session state: ${err.message}`)
     }
+  }
+
+  /**
+   * 压缩会话上下文（保留最近消息，移除历史）
+   */
+  async compressSession(sessionFile: string): Promise<HistoryMessage[]> {
+    const result = compressMessages(sessionFile, 25)
+    return result.messages
   }
 
   async setModel(sessionFile: string, provider: string, modelId: string): Promise<void> {

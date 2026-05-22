@@ -207,6 +207,19 @@ app.post('/api/chat', async (c) => {
   return streamSSE(c, (stream) => pipeChatToSSE(stream, piPool, message))
 })
 
+// 压缩上下文
+app.post('/api/chat/compress', async (c) => {
+  if (!piPool.activeId) {
+    return c.json({ error: '没有活跃会话' }, 400)
+  }
+  try {
+    const messages = await piPool.compressSession(piPool.activeId)
+    return c.json({ messages })
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500)
+  }
+})
+
 // ===== 全局异常兜底（防止进程意外退出） =====
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err)

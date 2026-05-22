@@ -19,6 +19,7 @@ export interface ChatContextValue {
   onRename?: (newName: string) => void
   onOpenSettings?: () => void
   onToggleSidebar?: () => void
+  onCommand?: (command: string) => Promise<void>
   loadingLabel?: ReactNode
 }
 
