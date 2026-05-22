@@ -6,11 +6,9 @@ import { ChatMessages } from './components/ChatMessages'
 import { ChatInput } from './components/ChatInput'
 import { ChatContextProvider } from './hooks/useChatContext'
 import { ConfirmDialog } from './components/ConfirmDialog'
-import { useSessions } from './hooks/useSessions'
-import { usePoolStatus } from './hooks/usePoolStatus'
 import { useChat } from './hooks/useChat'
-import { useSessionActions } from './hooks/useSessionActions'
-import { openSession, fetchSessionMessages, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo, type PoolStatus } from './lib/api'
+import { useSessionManager } from './hooks/useSessionManager'
+import { fetchSessionMessages, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
 import { useToast } from './components/Toast'
 import { SettingsPanel } from './components/SettingsPanel'
 
@@ -20,15 +18,21 @@ function App() {
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
 
-  // 数据层
-  const { groups, loading, refresh, create, remove } = useSessions()
-  const { poolStatus, activeId, setPoolStatus } = usePoolStatus()
+  // ── 会话管理（聚合层） ──
+  const {
+    groups, poolStatus, activeId, activeSession, totalSessions,
+    loading: sessionsLoading,
+    switchingId, creating, collapsedGroups,
+    setSwitchingId, setCreating, setPoolStatus, refreshGroups,
+    openOrSwitch, createSession, deleteSession,
+    closeSession: closeSessionOp, closeAllSessions, toggleGroup,
+  } = useSessionManager()
+
+  // ── 聊天（独立） ──
   const { chatMessages, streaming, error, setError, sendMessage, clearMessages, replaceMessages, stopGeneration } = useChat()
 
-  // UI 状态
+  // ── UI 状态 ──
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [switchingId, setSwitchingId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [autoLoading, setAutoLoading] = useState(false)
@@ -36,23 +40,8 @@ function App() {
   const [thinkingLevel, setThinkingLevel] = useState('high')
   const [contextUsed, setContextUsed] = useState(0)
   const [contextWindow, setContextWindow] = useState(1000000)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
-  // 当前活跃会话信息
-  const activeSession: SessionInfo | undefined = (() => {
-    if (!activeId) return undefined
-    for (const g of groups) for (const s of g.sessions) if (s.file === activeId) return s
-    return undefined
-  })()
-  const activeStatus: PoolStatus | undefined = activeId ? poolStatus[activeId] : undefined
-
-  const totalSessions = groups.reduce((s, g) => s + g.sessions.length, 0)
-
-  // 会话操作
-  const onMessagesLoaded = useCallback((msgs: any[]) => replaceMessages(msgs), [replaceMessages])
-  const onStatusUpdate = useCallback((file: string, status: PoolStatus) => {
-    setPoolStatus(prev => ({ ...prev, [file]: status }))
-  }, [setPoolStatus])
+  const activeStatus = activeId ? poolStatus[activeId] : undefined
 
   // 通用：带进度 + 完成绿色延迟 800ms 的消息加载
   const loadWithProgress = useCallback(async (file: string) => {
@@ -63,7 +52,7 @@ function App() {
     return msgs
   }, [])
 
-  const actions = useSessionActions(poolStatus, onMessagesLoaded, onStatusUpdate)
+  // ── 会话操作 ──
 
   // 点击会话
   const handleSessionClick = useCallback(async (session: SessionInfo) => {
@@ -73,112 +62,87 @@ function App() {
     clearMessages()
     setLoadProgress(null)
 
-    const currentStatus = poolStatus[session.file]
-    if (currentStatus === 'starting' || currentStatus === 'ready') {
-      await fetch('/api/sessions/switch', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionFile: session.file }),
-      })
-      try {
-        const msgs = await loadWithProgress(session.file)
-        onMessagesLoaded(msgs)
-      } catch (err: any) {
-        setError(err.message)
-      }
-      // 进度到 100% 变绿，延迟 800ms 再消失
-      setTimeout(() => {
-        setSwitchingId(null)
-        setLoadProgress(null)
-      }, 800)
-      setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
-      return
-    }
-
     try {
-      const data = await openSession(session.file)
-      onMessagesLoaded(data.messages || [])
-      setPoolStatus(prev => ({ ...prev, [session.file]: data.status }))
+      const { messages, status } = await openOrSwitch(session.file)
+      replaceMessages(messages)
+      setPoolStatus((prev) => ({ ...prev, [session.file]: status }))
     } catch (err: any) {
       setError(err.message)
     }
-    setSwitchingId(null)
-    setLoadProgress(null)
-  }, [poolStatus, onMessagesLoaded, setPoolStatus, setError, clearMessages, loadWithProgress])
+
+    // 进度到 100% 变绿，延迟 800ms 再消失
+    setTimeout(() => {
+      setSwitchingId(null)
+      setLoadProgress(null)
+    }, 800)
+
+    setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
+  }, [openOrSwitch, setSwitchingId, setPoolStatus, setError, clearMessages, replaceMessages])
 
   // 新建会话
   const handleNewSession = useCallback(async () => {
     setCreating(true)
     setError(null)
     try {
-      const data = await create()
-      onMessagesLoaded(data.messages || [])
-      setPoolStatus(prev => ({ ...prev, [data.sessionFile]: data.status }))
+      const data = await createSession()
+      replaceMessages(data.messages || [])
       showToast('新会话已创建', 'success')
     } catch (err: any) {
       setError(err.message)
       showToast('创建会话失败', 'error')
     }
-    finally { setCreating(false) }
-  }, [create, onMessagesLoaded, setPoolStatus, setError, showToast])
+  }, [createSession, replaceMessages, setError, showToast, setCreating])
 
   // 删除会话
   const handleDelete = useCallback(async (sessionFile: string) => {
     setConfirmDelete(null)
     try {
-      await remove(sessionFile)
-      if (activeId === sessionFile) clearMessages()
+      const shouldClear = await deleteSession(sessionFile)
+      if (shouldClear) clearMessages()
       showToast('会话已删除', 'success')
     } catch {
       showToast('删除失败', 'error')
     }
-  }, [remove, activeId, clearMessages, showToast])
+  }, [deleteSession, clearMessages, showToast])
 
   // 关闭当前活跃会话
   const handleClose = useCallback(async () => {
     if (!activeId) return
     try {
-      await actions.handleClose(activeId, clearMessages)
+      await closeSessionOp(activeId)
+      clearMessages()
       showToast('会话已关闭', 'info')
     } catch {
       showToast('关闭会话失败', 'error')
     }
-  }, [activeId, actions, clearMessages, showToast])
+  }, [activeId, closeSessionOp, clearMessages, showToast])
 
   // 关闭指定会话（给侧边栏终止按钮用）
   const handleCloseSession = useCallback(async (sessionFile: string) => {
     try {
-      await actions.handleClose(sessionFile, () => {
-        if (activeId === sessionFile) clearMessages()
-      })
+      await closeSessionOp(sessionFile)
+      if (activeId === sessionFile) clearMessages()
       showToast('会话已终止', 'info')
     } catch {
       showToast('终止会话失败', 'error')
     }
-  }, [activeId, actions, clearMessages, showToast])
+  }, [activeId, closeSessionOp, clearMessages, showToast])
 
   // 关闭全部
   const handleCloseAll = useCallback(async () => {
     try {
-      await actions.handleCloseAll(clearMessages)
+      await closeAllSessions()
+      clearMessages()
       showToast('已关闭全部会话', 'info')
     } catch {
       showToast('关闭全部会话失败', 'error')
     }
-  }, [actions, clearMessages, showToast])
-
-  // 折叠
-  const toggleGroup = useCallback((dir: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(dir)) next.delete(dir); else next.add(dir)
-      return next
-    })
-  }, [])
+  }, [closeAllSessions, clearMessages, showToast])
 
   // 自动加载：刷新页面后，如果已有活跃会话，自动加载消息
   const autoLoadedRef = useRef(false)
   useEffect(() => {
-    if (loading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
+    if (sessionsLoading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
     autoLoadedRef.current = true
     setAutoLoading(true)
     loadWithProgress(activeId).then(msgs => {
@@ -191,7 +155,7 @@ function App() {
       setAutoLoading(false)
       setLoadProgress(null)
     })
-  }, [loading, activeId, activeSession, chatMessages.length, replaceMessages, loadWithProgress])
+  }, [sessionsLoading, activeId, activeSession, chatMessages.length, replaceMessages, loadWithProgress])
 
   // 获取当前思考级别 + 上下文使用情况
   useEffect(() => {
@@ -221,8 +185,8 @@ function App() {
         body: JSON.stringify({ sessionFile: activeId, name: newName }),
       })
     } catch {}
-    refresh()
-  }, [activeId, refresh])
+    refreshGroups()
+  }, [activeId, refreshGroups])
 
   // 发消息
   const handleSend = useCallback(() => {
@@ -245,7 +209,7 @@ function App() {
     ? (activeSession.title.length > 9 ? activeSession.title.slice(0, 8) + '...' : activeSession.title)
     : ''
 
-  if (loading) return (
+  if (sessionsLoading) return (
     <div className="h-dvh bg-zinc-50 flex items-center justify-center">
       <div className="text-zinc-400 animate-pulse">加载中...</div>
     </div>
