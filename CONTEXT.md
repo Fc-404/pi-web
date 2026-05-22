@@ -84,10 +84,11 @@ Node.js + TypeScript + Hono 实现的 Web 服务。负责：
 
 | 文件 | 职责 |
 |:-----|:------|
-| `index.ts` | API 路由 + SSE 流 |
+| `index.ts` | API 路由注册（瘦路由层） |
 | `pi-pool.ts` | PiPool 多进程池管理 |
 | `rpc-client.ts` | pi RPC 子进程通信 |
-| `session-store.ts` | 会话文件存储层（合并自 sessions.ts + messages.ts），统一封装会话文件 I/O 和 jsonl 解析 |
+| `session-store.ts` | 会话文件存储层，统一封装会话文件 I/O 和 jsonl 解析 |
+| `chat-stream.ts` | SSE 流式聊天管道，将 PiPool 事件流通过 SSE 输出 |
 
 ### pi-web 前端
 React + Vite + TypeScript + Tailwind CSS + shadcn/ui 构建的聊天界面。

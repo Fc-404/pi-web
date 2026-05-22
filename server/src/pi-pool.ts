@@ -19,7 +19,7 @@ type PoolEventCallback = (event: AgentEvent & { sessionFile: string }) => void
 /**
  * 多进程池：每个会话一个独立的 pi RPC 进程
  */
-class PiPool {
+export class PiPool {
   private pool = new Map<string, SessionEntry>()
   private _activeId: string | null = null
   private eventListeners: Set<PoolEventCallback> = new Set()

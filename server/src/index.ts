@@ -4,6 +4,7 @@ import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
 import { listGroups, create, rename, getMessages, getContext } from './session-store.js'
 import { piPool } from './pi-pool.js'
+import { pipeChatToSSE } from './chat-stream.js'
 
 const app = new Hono()
 
@@ -184,31 +185,7 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: 'No active session. Open a session first.' }, 400)
   }
 
-  return streamSSE(c, async (stream) => {
-    const eventQueue: any[] = []
-    let resolveEvent: (() => void) | null = null
-
-    const unsub = piPool.onEvent((event) => {
-      eventQueue.push(event)
-      if (resolveEvent) { resolveEvent(); resolveEvent = null }
-    })
-
-    try {
-      await piPool.prompt(message)
-
-      while (true) {
-        if (eventQueue.length === 0) {
-          await new Promise<void>((resolve) => { resolveEvent = resolve })
-        }
-        const event = eventQueue.shift()!
-        if (event.type === 'agent_end') break
-        await stream.writeSSE({ event: event.type, data: JSON.stringify(event) })
-      }
-      await stream.writeSSE({ event: 'done', data: '' })
-    } finally {
-      unsub()
-    }
-  })
+  return streamSSE(c, (stream) => pipeChatToSSE(stream, piPool, message))
 })
 
 // ===== 启动 =====
