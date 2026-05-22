@@ -47,7 +47,11 @@ export function ChatMessages() {
         {loading && (
         <div className="h-full flex items-center justify-center">
           <div className="text-center">
-            <div className="w-10 h-10 border-4 border-zinc-200 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4" />
+            <span className="inline-flex gap-1.5 mb-3">
+              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
             <p className="text-zinc-400 text-sm">{loadingLabel || '正在加载...'}</p>
           </div>
         </div>
