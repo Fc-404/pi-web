@@ -102,7 +102,8 @@ export async function fetchSessionMessagesIncremental(
   since?: number
 ): Promise<IncrementalResult> {
   let url = `/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`
-  if (since !== undefined) url += `&since=${since}`
+  // 保护：只有有效时才拼接 since 参数
+  if (since !== undefined && !isNaN(since) && since >= 0) url += `&since=${since}`
   const res = await fetch(url)
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
   return res.json()
