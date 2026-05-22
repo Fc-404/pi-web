@@ -1,8 +1,7 @@
 import { RpcClient, type AgentEvent } from './rpc-client.js'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { getSessionMessages, type HistoryMessage } from './messages.js'
-import { deleteSessionFiles } from './sessions.js'
+import { getMessages, remove, type HistoryMessage } from './session-store.js'
 
 const SESSION_DIR = join(homedir(), '.pi', 'agent', 'sessions')
 
@@ -72,7 +71,7 @@ class PiPool {
     if (existing) {
       // 已存在，直接返回当前状态和历史
       return {
-        messages: getSessionMessages(sessionFile),
+        messages: getMessages(sessionFile),
         status: existing.status,
       }
     }
@@ -95,7 +94,7 @@ class PiPool {
     })
 
     // 先返回历史消息，后台启动
-    const messages = getSessionMessages(sessionFile)
+    const messages = getMessages(sessionFile)
 
     // 后台异步启动
     this.startClient(client, fullPath, sessionFile)
@@ -167,7 +166,7 @@ class PiPool {
     }
 
     // 删除文件（委托给 sessions.ts）
-    deleteSessionFiles(sessionFile)
+    remove(sessionFile)
 
     if (this._activeId === sessionFile) {
       this._activeId = null
@@ -201,7 +200,7 @@ class PiPool {
    */
   getActiveMessages(): HistoryMessage[] {
     if (!this._activeId) return []
-    return getSessionMessages(this._activeId)
+    return getMessages(this._activeId)
   }
 
   /**

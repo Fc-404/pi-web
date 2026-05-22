@@ -2,8 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
-import { listSessions, createSessionFile, renameSession } from './sessions.js'
-import { getSessionMessages, getSessionContext } from './messages.js'
+import { listGroups, create, rename, getMessages, getContext } from './session-store.js'
 import { piPool } from './pi-pool.js'
 
 const app = new Hono()
@@ -17,7 +16,7 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }))
 
 // 会话列表
 app.get('/api/sessions', (c) => {
-  const groups = listSessions()
+  const groups = listGroups()
   return c.json({ groups })
 })
 
@@ -46,7 +45,7 @@ app.get('/api/sessions/messages', (c) => {
   const file = c.req.query('file')
   if (!file) return c.json({ error: 'file query required' }, 400)
   try {
-    const messages = getSessionMessages(file)
+    const messages = getMessages(file)
     return c.json({ messages })
   } catch (err: any) {
     return c.json({ error: err.message }, 500)
@@ -89,7 +88,7 @@ app.post('/api/sessions/rename', async (c) => {
   if (!sessionFile) return c.json({ error: 'sessionFile required' }, 400)
   if (!name || !name.trim()) return c.json({ error: 'name required' }, 400)
 
-  const success = renameSession(sessionFile, name.trim())
+  const success = rename(sessionFile, name.trim())
   if (!success) return c.json({ error: 'Session file not found' }, 404)
 
   return c.json({ success: true })
@@ -99,7 +98,7 @@ app.post('/api/sessions/rename', async (c) => {
 app.post('/api/sessions/new', async (c) => {
   try {
     const { cwd } = await c.req.json().catch(() => ({ cwd: undefined }))
-    const { relativePath } = createSessionFile(cwd)
+    const { relativePath } = create(cwd)
 
     const { messages, status } = await piPool.open(relativePath)
     piPool.switchTo(relativePath)
@@ -168,7 +167,7 @@ app.get('/api/sessions/context', async (c) => {
   const file = c.req.query('file')
   if (!file) return c.json({ error: 'file query required' }, 400)
   try {
-    const ctx = getSessionContext(file)
+    const ctx = getContext(file)
     return c.json(ctx)
   } catch (err: any) {
     return c.json({ error: err.message }, 400)
