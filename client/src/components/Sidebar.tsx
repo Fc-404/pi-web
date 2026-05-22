@@ -43,7 +43,7 @@ function SidebarContent({
   return (
     <div className="flex flex-col h-full">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 md:px-5 py-3 border-b border-zinc-200 flex-shrink-0">
         <h1 className="text-base font-semibold text-zinc-800">PI WEB</h1>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon-sm" onClick={onToggleConfig} title={isConfig ? '返回聊天' : '配置'}
