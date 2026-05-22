@@ -57,7 +57,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
             <button
               type="submit"
               disabled={loading || !password}
-              className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+              className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 disabled:opacity-50 transition-colors inline-flex items-center justify-center"
             >
               {loading ? <LoadingDots size="sm" color="white" /> : '登 录'}
             </button>

@@ -189,7 +189,7 @@ function SettingsForm() {
         <button
           type="submit"
           disabled={loading || !oldPassword || !newPassword || !confirmPassword}
-          className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-300 text-white text-sm font-medium transition-colors"
+          className="px-6 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-300 text-white text-sm font-medium transition-colors inline-flex items-center justify-center"
           onClick={handleSubmit}
         >
           {loading ? <LoadingDots size="sm" color="white" /> : '更新密码'}
