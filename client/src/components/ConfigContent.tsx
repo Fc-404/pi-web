@@ -5,6 +5,7 @@
  * 扁平化布局，非卡片式，PC 端自适应宽度
  */
 import { useState, useRef, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
 import { getToken } from '../lib/auth'
 import { LoadingDots } from './LoadingDots'
 
@@ -17,7 +18,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'about', label: '关于' },
 ]
 
-export function ConfigContent() {
+export function ConfigContent({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>('settings')
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [indicator, setIndicator] = useState({ left: 0, width: 0 })
@@ -32,27 +33,60 @@ export function ConfigContent() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* 导航标签 */}
+      {/* 导航标签 — 与 ChatHeader 同高 */}
       <div className="border-b border-zinc-200 bg-white flex-shrink-0">
-        <div className="relative flex overflow-x-auto [&::-webkit-scrollbar]:hidden px-5 md:px-8 gap-1">
-          {tabs.map((tab, i) => (
-            <button
-              key={tab.key}
-              ref={(el) => { tabRefs.current[i] = el }}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-3 py-3 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
-                activeTab === tab.key
-                  ? 'text-indigo-600 font-medium'
-                  : 'text-zinc-500 hover:text-zinc-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <div
-            className="absolute bottom-0 h-0.5 bg-indigo-500 transition-all duration-300 ease-out"
-            style={{ left: indicator.left, width: indicator.width }}
-          />
+        {/* PC */}
+        <div className="hidden md:flex items-center gap-2 px-5 py-3">
+          <div className="relative flex items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden flex-1">
+            {tabs.map((tab, i) => (
+              <button
+                key={tab.key}
+                ref={(el) => { tabRefs.current[i] = el }}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-0.5 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
+                  activeTab === tab.key
+                    ? 'text-indigo-600 font-medium'
+                    : 'text-zinc-500 hover:text-zinc-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <div
+              className="absolute bottom-0 h-0.5 bg-indigo-500 transition-all duration-300 ease-out"
+              style={{ left: indicator.left, width: indicator.width }}
+            />
+          </div>
+        </div>
+        {/* 移动端 — 汉堡菜单 + 标签同一行 */}
+        <div className="flex md:hidden items-center gap-2 px-4 py-3">
+          {onToggleSidebar && (
+            <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="flex-shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </Button>
+          )}
+          <div className="relative flex items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden flex-1">
+            {tabs.map((tab, i) => (
+              <button
+                key={tab.key}
+                ref={(el) => { tabRefs.current[i] = el }}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-0.5 text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
+                  activeTab === tab.key
+                    ? 'text-indigo-600 font-medium'
+                    : 'text-zinc-500 hover:text-zinc-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <div
+              className="absolute bottom-0 h-0.5 bg-indigo-500 transition-all duration-300 ease-out"
+              style={{ left: indicator.left, width: indicator.width }}
+            />
+          </div>
         </div>
       </div>
 
