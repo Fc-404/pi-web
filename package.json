@@ -2,7 +2,7 @@
   "name": "pi-web",
   "private": true,
   "type": "module",
-  "workspaces": ["server", "client"],
+  "workspaces": ["server", "client", "shared"],
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client && npm run build -w server",

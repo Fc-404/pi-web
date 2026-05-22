@@ -1,44 +1,16 @@
-// ===== API 类型 =====
+// ===== API 类型（共享自 @pi-web/shared） =====
 
-export interface SessionInfo {
-  id: string
-  file: string
-  startedAt: string
-  title: string
-  isEmpty: boolean
-}
+import type {
+  SessionInfo as _SessionInfo,
+  SessionGroup as _SessionGroup,
+  HistoryMessage as _HistoryMessage,
+  SessionStatus as _SessionStatus,
+} from '@pi-web/shared'
 
-export interface SessionGroup {
-  dir: string
-  cwd: string
-  sessions: SessionInfo[]
-}
-
-export interface HistoryMessage {
-  role: 'user' | 'assistant' | 'toolCall' | 'toolResult' | 'system'
-  content: string
-  thinking?: string
-  toolName?: string
-  toolCallId?: string
-  isError?: boolean
-  callArgs?: string  // toolResult 附带的调用参数 JSON
-  usage?: {
-    input: number
-    output: number
-    cacheRead: number
-    totalTokens: number
-    cost: {
-      input: number
-      output: number
-      cacheRead: number
-      total: number
-    }
-  }
-  model?: string
-  timestamp?: number
-}
-
-export type PoolStatus = 'stopped' | 'starting' | 'ready'
+export type SessionInfo = _SessionInfo
+export type SessionGroup = _SessionGroup
+export type HistoryMessage = _HistoryMessage
+export type PoolStatus = _SessionStatus
 
 // ===== API 调用 =====
 

@@ -12,56 +12,20 @@ import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
-// =====================================================================
-// 类型定义
-// =====================================================================
+import type {
+  Usage,
+  HistoryMessage,
+  SessionInfo,
+  SessionGroup,
+  SessionContext,
+} from '@pi-web/shared'
 
-export interface Usage {
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-  totalTokens: number
-  cost: {
-    input: number
-    output: number
-    cacheRead: number
-    total: number
-  }
-}
-
-export interface HistoryMessage {
-  role: 'user' | 'assistant' | 'toolCall' | 'toolResult' | 'system'
-  content: string
-  thinking?: string
-  toolName?: string
-  toolCallId?: string
-  isError?: boolean
-  usage?: Usage
-  model?: string
-  timestamp?: number
-  callArgs?: string
-}
-
-export interface SessionInfo {
-  id: string
-  file: string
-  startedAt: string
-  title: string
-  isEmpty: boolean
-}
-
-export interface SessionGroup {
-  dir: string
-  cwd: string
-  sessions: SessionInfo[]
-}
-
-export interface SessionContext {
-  usedTokens: number
-  contextWindow: number
-  messageCount: number
-  cacheTokens: number
+export type {
+  Usage,
+  HistoryMessage,
+  SessionInfo,
+  SessionGroup,
+  SessionContext,
 }
 
 // =====================================================================

@@ -2,10 +2,9 @@ import { RpcClient, type AgentEvent } from './rpc-client.js'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { getMessages, remove, type HistoryMessage } from './session-store.js'
+import type { SessionStatus } from '@pi-web/shared'
 
 const SESSION_DIR = join(homedir(), '.pi', 'agent', 'sessions')
-
-type SessionStatus = 'stopped' | 'starting' | 'ready'
 
 interface SessionEntry {
   client: RpcClient
