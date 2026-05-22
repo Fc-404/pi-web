@@ -8,7 +8,8 @@ import { ChatContextProvider } from './hooks/useChatContext'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { useChat } from './hooks/useChat'
 import { useSessionManager } from './hooks/useSessionManager'
-import { fetchSessionMessages, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
+import { fetchSessionMessages, fetchSessionMessagesIncremental, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
+import { getSessionCache, setSessionCache } from './lib/db'
 import { useToast } from './components/Toast'
 import { SettingsPanel } from './components/SettingsPanel'
 
@@ -139,7 +140,7 @@ function App() {
     }
   }, [closeAllSessions, clearMessages, showToast])
 
-  // 自动加载：刷新页面后，如果已有活跃会话，自动加载消息
+  // 自动加载：刷新页面后，如果已有活跃会话，自动加载消息并写入缓存
   const autoLoadedRef = useRef(false)
   useEffect(() => {
     if (sessionsLoading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
@@ -147,6 +148,12 @@ function App() {
     setAutoLoading(true)
     loadWithProgress(activeId).then(msgs => {
       if (msgs.length > 0) replaceMessages(msgs)
+      // 尝试建立缓存（失败不影响消息显示）
+      fetchSessionMessagesIncremental(activeId)
+        .then(info => {
+          setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
+        })
+        .catch(() => {}) // 缓存写入失败忽略
       setTimeout(() => {
         setAutoLoading(false)
         setLoadProgress(null)
@@ -191,11 +198,32 @@ function App() {
   // 发消息
   const handleSend = useCallback(() => {
     sendMessage(input, activeId, async () => {
-      // SSE 正常结束后刷新完整消息
+      // SSE 结束后增量补全（非全量），保持缓存一致
       if (activeId) {
         try {
-          const msgs = await fetchSessionMessages(activeId)
-          replaceMessages(msgs)
+          const cached = await getSessionCache(activeId)
+          if (cached) {
+            const result = await fetchSessionMessagesIncremental(activeId, cached.lastSeq)
+            if (result.reset) {
+              // 文件重建 → 全量重拉
+              const msgs = await fetchSessionMessages(activeId)
+              const info = await fetchSessionMessagesIncremental(activeId)
+              await setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
+              replaceMessages(msgs)
+            } else if (result.messages.length > 0) {
+              // 有新增 → 合并缓存
+              const newMessages = [...cached.messages, ...result.messages]
+              await setSessionCache(activeId, { messages: newMessages, lastSeq: result.totalLines - 1, totalLines: result.totalLines })
+              replaceMessages(newMessages)
+            }
+            // 无新增 → SSE 已实时更新，不动
+          } else {
+            // 无缓存（异常兜底）→ 全量
+            const msgs = await fetchSessionMessages(activeId)
+            const info = await fetchSessionMessagesIncremental(activeId)
+            await setSessionCache(activeId, { messages: msgs, lastSeq: info.totalLines - 1, totalLines: info.totalLines })
+            replaceMessages(msgs)
+          }
         } catch {}
       }
     })

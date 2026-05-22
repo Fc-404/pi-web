@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
-import { listGroups, create, rename, getMessages, getContext } from './session-store.js'
+import { listGroups, create, rename, getMessages, getMessagesIncremental, getContext } from './session-store.js'
 import { piPool } from './pi-pool.js'
 import { pipeChatToSSE } from './chat-stream.js'
 
@@ -41,13 +41,18 @@ app.post('/api/sessions/open', async (c) => {
   }
 })
 
-// 获取会话历史消息
+// 获取会话历史消息（支持增量）
 app.get('/api/sessions/messages', (c) => {
   const file = c.req.query('file')
   if (!file) return c.json({ error: 'file query required' }, 400)
   try {
-    const messages = getMessages(file)
-    return c.json({ messages })
+    const sinceStr = c.req.query('since')
+    const since = sinceStr ? parseInt(sinceStr, 10) : undefined
+    if (since !== undefined && (isNaN(since) || since < 0)) {
+      return c.json({ error: 'invalid since value' }, 400)
+    }
+    const result = getMessagesIncremental(file, since)
+    return c.json(result)
   } catch (err: any) {
     return c.json({ error: err.message }, 500)
   }
@@ -186,6 +191,14 @@ app.post('/api/chat', async (c) => {
   }
 
   return streamSSE(c, (stream) => pipeChatToSSE(stream, piPool, message))
+})
+
+// ===== 全局异常兜底（防止进程意外退出） =====
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason)
 })
 
 // ===== 启动 =====

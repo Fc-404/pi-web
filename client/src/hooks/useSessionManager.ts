@@ -14,10 +14,12 @@ import {
   closeSession as closeSessionApi,
   closeAllSessions as closeAllSessionsApi,
   fetchSessionMessages,
+  fetchSessionMessagesIncremental,
   type SessionInfo,
   type PoolStatus,
   type HistoryMessage,
 } from '../lib/api'
+import { getSessionCache, setSessionCache, deleteSessionCache } from '../lib/db'
 
 export interface SessionOperationResult {
   messages: HistoryMessage[]
@@ -50,39 +52,90 @@ export function useSessionManager() {
     [groups],
   )
 
-  // ── 操作：打开或切换会话 ──
+  // ── 操作：打开或切换会话（集成 IndexedDB 缓存 + 增量同步） ──
   const openOrSwitch = useCallback(
     async (sessionFile: string): Promise<SessionOperationResult> => {
-      const currentStatus = poolStatus[sessionFile]
-      if (currentStatus === 'starting' || currentStatus === 'ready') {
+      // 1. 处理进程状态
+      let status: PoolStatus
+      if (poolStatus[sessionFile] === 'starting' || poolStatus[sessionFile] === 'ready') {
         await switchSession(sessionFile)
-        const msgs = await fetchSessionMessages(sessionFile)
-        return { messages: msgs, status: currentStatus }
+        status = poolStatus[sessionFile]
+      } else {
+        const data = await openSession(sessionFile)
+        status = data.status
+        setPoolStatus((prev) => ({ ...prev, [sessionFile]: status }))
       }
 
-      const data = await openSession(sessionFile)
-      setPoolStatus((prev) => ({ ...prev, [sessionFile]: data.status }))
-      return { messages: data.messages || [], status: data.status }
+      // 2. 从缓存加载 + 增量同步
+      const cached = await getSessionCache(sessionFile)
+
+      if (cached) {
+        const result = await fetchSessionMessagesIncremental(sessionFile, cached.lastSeq)
+        if (result.reset) {
+          // 文件被重建 → 全量重拉
+          const msgs = await fetchSessionMessages(sessionFile)
+          await setSessionCache(sessionFile, {
+            messages: msgs,
+            lastSeq: result.totalLines - 1,
+            totalLines: result.totalLines,
+          })
+          return { messages: msgs, status }
+        } else if (result.messages.length > 0) {
+          // 有新增 → 合并缓存
+          const newMessages = [...cached.messages, ...result.messages]
+          await setSessionCache(sessionFile, {
+            messages: newMessages,
+            lastSeq: result.totalLines - 1,
+            totalLines: result.totalLines,
+          })
+          return { messages: newMessages, status }
+        } else {
+          // 无新增 → 直接用缓存
+          return { messages: cached.messages, status }
+        }
+      } else {
+        // 无缓存 → 全量拉取 + 写入缓存
+        const msgs = await fetchSessionMessages(sessionFile)
+        // 尝试建立缓存（失败不影响消息展示）
+        try {
+          const info = await fetchSessionMessagesIncremental(sessionFile)
+          await setSessionCache(sessionFile, {
+            messages: msgs,
+            lastSeq: info.totalLines - 1,
+            totalLines: info.totalLines,
+          })
+        } catch (e) {
+          console.warn('[缓存] 写入失败:', e)
+        }
+        return { messages: msgs, status }
+      }
     },
     [poolStatus, setPoolStatus],
   )
 
-  // ── 操作：新建会话 ──
+  // ── 操作：新建会话（写入空缓存） ──
   const createSession = useCallback(async () => {
     setCreating(true)
     try {
       const data = await create()
       setPoolStatus((prev) => ({ ...prev, [data.sessionFile]: data.status }))
+      // 新建会话消息为空，写入空缓存
+      await setSessionCache(data.sessionFile, {
+        messages: [],
+        lastSeq: 0,
+        totalLines: 1, // 仅 session header 一行
+      })
       return data
     } finally {
       setCreating(false)
     }
   }, [create, setPoolStatus])
 
-  // ── 操作：删除会话 ──
+  // ── 操作：删除会话（清除缓存） ──
   const deleteSession = useCallback(
     async (sessionFile: string): Promise<boolean> => {
       await remove(sessionFile)
+      await deleteSessionCache(sessionFile)
       return activeId === sessionFile // 调用方需要据此清理消息
     },
     [remove, activeId],

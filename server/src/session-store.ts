@@ -334,6 +334,124 @@ export function getMessages(sessionFile: string): HistoryMessage[] {
 }
 
 /**
+ * 增量读取消息 — 只返回行号 > since 的新增消息
+ *
+ * @param sessionFile 会话文件路径
+ * @param since 前端已处理的最后行号（0-based），不传则全量
+ * @returns messages 新增消息列表，totalLines 当前文件总行数，reset 为 true 表示文件已重建
+ */
+export function getMessagesIncremental(sessionFile: string, since?: number): {
+  messages: HistoryMessage[]
+  totalLines: number
+  reset?: boolean
+} {
+  const fullPath = resolvePath(sessionFile)
+  const content = readFileSync(fullPath, 'utf-8')
+  const lines = content.split('\n').filter(l => l.trim())
+  const totalLines = lines.length
+
+  // 如果 since >= totalLines，说明文件被重建/截断
+  if (since !== undefined && since >= totalLines) {
+    return { messages: [], totalLines, reset: true }
+  }
+
+  // 全量模式直接复用 getMessages
+  if (since === undefined) {
+    return { messages: getMessages(sessionFile), totalLines }
+  }
+
+  // 增量模式：从 since + 1 行开始解析
+  const messages: HistoryMessage[] = []
+  const pendingCallArgs = new Map<string, { args: string; toolName: string }>()
+  const startLine = since + 1 // since 是已处理的最后行号，+1 是下一行
+
+  for (let i = startLine; i < totalLines; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    try {
+      const data = JSON.parse(line)
+      const type = data.type
+
+      // 非 message 事件 → system 提示
+      if (type === 'model_change') {
+        messages.push({ role: 'system', content: `切换模型: ${data.provider}/${data.modelId}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+      if (type === 'thinking_level_change') {
+        messages.push({ role: 'system', content: `思考模式: ${data.thinkingLevel}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+      if (type === 'session_info') {
+        messages.push({ role: 'system', content: `重命名: ${data.name}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+      if (type !== 'message') continue
+
+      const msg = data.message
+      const role = msg.role
+
+      if (role === 'user' || role === 'assistant') {
+        let text = ''
+        let thinking = ''
+
+        for (const c of msg.content || []) {
+          if (c.type === 'text') text += c.text || ''
+          else if (c.type === 'thinking') thinking += c.thinking || ''
+          else if (c.type === 'toolCall') {
+            const argsStr = typeof c.arguments === 'string' ? c.arguments : JSON.stringify(c.arguments || '')
+            const toolCallId = c.id || ''
+            const toolName = c.name || 'unknown'
+            if (toolCallId) pendingCallArgs.set(toolCallId, { args: argsStr, toolName })
+          }
+        }
+
+        if (!text && !thinking) continue
+
+        const base: HistoryMessage = { role, content: text, thinking: thinking || undefined }
+        if (role === 'assistant') {
+          base.usage = msg.usage
+          base.model = msg.model
+          base.timestamp = msg.timestamp
+        } else if (role === 'user') {
+          base.timestamp = msg.timestamp
+        }
+        messages.push(base)
+      } else if (role === 'toolResult') {
+        let text = ''
+        for (const c of msg.content || []) {
+          if (c.type === 'text') text += c.text || ''
+        }
+        const entry = msg.toolCallId ? pendingCallArgs.get(msg.toolCallId) : undefined
+        messages.push({
+          role: 'toolResult',
+          content: text || '(no output)',
+          toolName: msg.toolName || entry?.toolName || 'unknown',
+          toolCallId: msg.toolCallId,
+          isError: msg.isError || false,
+          callArgs: entry?.args,
+        })
+        if (msg.toolCallId) pendingCallArgs.delete(msg.toolCallId)
+      }
+    } catch {
+      continue
+    }
+  }
+
+  // 未匹配的 toolCall（被中断的工具调用）
+  for (const [, entry] of pendingCallArgs) {
+    messages.push({
+      role: 'toolCall',
+      content: entry.args,
+      toolName: entry.toolName,
+      isError: true,
+    })
+  }
+
+  return { messages, totalLines }
+}
+
+/**
  * 获取会话的上下文使用情况（从最新 assistant 消息提取）
  */
 export function getContext(sessionFile: string): SessionContext {

@@ -80,11 +80,32 @@ export async function newSession(): Promise<{
   return res.json()
 }
 
+export interface IncrementalResult {
+  messages: HistoryMessage[]
+  totalLines: number
+  reset?: boolean
+}
+
 export async function fetchSessionMessages(sessionFile: string): Promise<HistoryMessage[]> {
   const res = await fetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
   const data = await res.json()
   return data.messages || []
+}
+
+/**
+ * 增量拉取消息
+ * @param since 可选，传则只返回行号 > since 的新消息；不传则全量 + totalLines
+ */
+export async function fetchSessionMessagesIncremental(
+  sessionFile: string,
+  since?: number
+): Promise<IncrementalResult> {
+  let url = `/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`
+  if (since !== undefined) url += `&since=${since}`
+  const res = await fetch(url)
+  if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+  return res.json()
 }
 
 export async function fetchSessionMessagesWithProgress(
