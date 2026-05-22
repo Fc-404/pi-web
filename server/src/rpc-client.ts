@@ -188,7 +188,7 @@ export class RpcClient {
         const idx = this.pendingQueue.findIndex(p => p.commandType === cmd.type)
         if (idx >= 0) this.pendingQueue.splice(idx, 1)
         reject(new Error(`RPC command "${cmd.type}" timed out after 60s`))
-      }, 60000)
+      }, 120000)
 
       const entry: PendingCommand = {
         commandType: cmd.type,
