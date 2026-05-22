@@ -2,11 +2,6 @@ import { useState, useRef, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FileText, Wrench } from 'lucide-react'
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from '@/components/ui/collapsible'
 import type { HistoryMessage } from '../lib/api'
 
 // ===== 统一折叠箭头 =====
@@ -123,13 +118,15 @@ function ToolCallBubble({ msg }: { msg: HistoryMessage }) {
     try { return JSON.parse(localStorage.getItem('piweb-settings-toolCallDefaultOpen') || 'false') }
     catch { return false }
   })
+
+  // 手写展开/折叠，避免 base-ui Collapsible 的定位问题
+  const toolContentRef = useRef<HTMLDivElement>(null)
   const isResult = msg.role === 'toolResult'
 
-  // 摘要：始终显示工具名 + 操作的文件/命令（不因结果而改变）
-  const summarySuffix = (() => {
-    if (!msg.content) return ''
+  // 从参数 JSON 中提取摘要
+  const parseSummary = (jsonStr: string): string => {
     try {
-      const args = JSON.parse(msg.content)
+      const args = JSON.parse(jsonStr)
       if (msg.toolName === 'read' || msg.toolName === 'write' || msg.toolName === 'edit') {
         return args.filePath || args.path || args.file || ''
       }
@@ -140,37 +137,48 @@ function ToolCallBubble({ msg }: { msg: HistoryMessage }) {
       if (msg.toolName === 'search' || msg.toolName === 'grep') {
         return args.pattern || args.query || args.text || ''
       }
+      if (msg.toolName === 'webSearch' || msg.toolName === 'web_fetch') {
+        return args.query || args.url || ''
+      }
       const firstVal = Object.values(args).find(v => typeof v === 'string')
       return firstVal ? (firstVal.length > 50 ? firstVal.slice(0, 50) + '...' : firstVal) : ''
     } catch {
-      // toolResult 的 content 是文本不是 JSON，摘要显示操作的工具名即可
       return ''
     }
-  })()
+  }
+
+  // 摘要：toolResult 用 callArgs，toolCall 用 content
+  const summarySuffix = isResult && msg.callArgs ? parseSummary(msg.callArgs)
+    : !isResult && msg.content ? parseSummary(msg.content)
+    : ''
 
   return (
     <div className="flex justify-start mb-3">
       <div className="max-w-[90%] md:max-w-[80%] rounded-2xl px-4 py-3 bg-zinc-100 text-zinc-800 rounded-bl-md">
-        <Collapsible open={open} onOpenChange={setOpen} className="text-xs">
-          <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-1.5 text-zinc-500 cursor-pointer hover:text-zinc-700 select-none w-full text-left">
-              <CollapseArrow open={open} />
-              {isResult ? (
-                <FileText className="w-3.5 h-3.5 flex-shrink-0" />
-              ) : (
-                <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
-              )}
-              <span className="font-mono">{msg.toolName || (isResult ? '工具结果' : '工具调用')}</span>
-              {summarySuffix && <span className="text-zinc-400 truncate ml-0.5">{summarySuffix}</span>}
-              {msg.isError && <span className="text-red-400 ml-1">(错误)</span>}
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2">
-            <pre className="text-[11px] leading-relaxed text-zinc-600 max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+        <div className="text-xs">
+          <button
+            onClick={() => setOpen(!open)}
+            className="flex items-center gap-1.5 text-zinc-500 cursor-pointer hover:text-zinc-700 select-none w-full text-left"
+          >
+            <CollapseArrow open={open} />
+            {(() => {
+              const tn = msg.toolName || ''
+              if (tn === 'read' || tn === 'write' || tn === 'edit') return <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+              return <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
+            })()}
+            <span className="font-mono flex-shrink-0">{msg.toolName || (isResult ? '工具结果' : '工具调用')}</span>
+            {summarySuffix && <span className="text-zinc-400 truncate ml-0.5 min-w-0">{summarySuffix}</span>}
+            {msg.isError && <span className="text-red-400 ml-1 flex-shrink-0">(错误)</span>}
+          </button>
+          <div
+            ref={toolContentRef}
+            className={`overflow-auto transition-all duration-200 ${open ? 'mt-2 max-h-96' : 'max-h-0'}`}
+          >
+            <div className="text-[11px] leading-relaxed text-zinc-600 font-mono whitespace-pre">
               {msg.content}
-            </pre>
-          </CollapsibleContent>
-        </Collapsible>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -197,6 +205,16 @@ function MessageBubbleInner({ msg, prevRole, nextRole }: { msg: HistoryMessage; 
     catch { return false }
   })
 
+  if (msg.role === 'system') {
+    return (
+      <div className="flex items-center gap-3 my-3 select-none">
+        <div className="flex-1 h-px bg-zinc-200" />
+        <span className="text-[11px] text-zinc-400 whitespace-nowrap">{msg.content}</span>
+        <div className="flex-1 h-px bg-zinc-200" />
+      </div>
+    )
+  }
+
   if (msg.role === 'toolCall' || msg.role === 'toolResult') {
     return <ToolCallBubble msg={msg} />
   }
@@ -213,17 +231,20 @@ function MessageBubbleInner({ msg, prevRole, nextRole }: { msg: HistoryMessage; 
           isUser ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-zinc-100 text-zinc-800 rounded-bl-md'
         }`}>
           {msg.thinking && (
-            <Collapsible open={thinkingOpen} onOpenChange={setThinkingOpen} className="mb-2 text-xs">
-              <CollapsibleTrigger asChild>
-                <button className="flex items-center gap-1.5 text-zinc-400 cursor-pointer hover:text-zinc-600 select-none">
-                  <CollapseArrow open={thinkingOpen} />
-                  <span>思考过程</span>
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-1.5 text-zinc-500 leading-relaxed whitespace-pre-wrap">
-                {msg.thinking}
-              </CollapsibleContent>
-            </Collapsible>
+            <div className="mb-2 text-xs">
+              <button
+                onClick={() => setThinkingOpen(!thinkingOpen)}
+                className="flex items-center gap-1.5 text-zinc-400 cursor-pointer hover:text-zinc-600 select-none"
+              >
+                <CollapseArrow open={thinkingOpen} />
+                <span>思考过程</span>
+              </button>
+              <div className={`overflow-auto transition-all duration-200 ${thinkingOpen ? 'mt-1.5 max-h-96' : 'max-h-0'}`}>
+                <div className="text-zinc-500 leading-relaxed whitespace-pre-wrap">
+                  {msg.thinking}
+                </div>
+              </div>
+            </div>
           )}
           <div className={`text-sm whitespace-pre-wrap break-words ${isUser ? '' : 'markdown-body'}`}>
             {isUser ? msg.content : <MarkdownContent content={msg.content} />}

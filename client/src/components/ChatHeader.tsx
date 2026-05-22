@@ -1,24 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import type { PoolStatus } from '../lib/api'
+import { useChatContext } from '../hooks/useChatContext'
 
-export function ChatHeader({
-  status,
-  title,
-  streaming,
-  onRename,
-  onOpenSettings,
-  loading,
-  loadProgress,
-}: {
-  status?: PoolStatus
-  title: string
-  streaming?: boolean
-  onRename?: (newName: string) => void
-  onOpenSettings?: () => void
-  loading?: boolean
-  loadProgress?: { loaded: number; total: number } | null
-}) {
+export function ChatHeader() {
+  const {
+    activeStatus: status,
+    title,
+    streaming,
+    onRename,
+    onOpenSettings,
+    loading,
+    loadProgress,
+    onToggleSidebar,
+  } = useChatContext()
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,10 +44,15 @@ export function ChatHeader({
 
   const pct = loadProgress ? Math.min((loadProgress.loaded / loadProgress.total) * 100, 100) : 0
 
-  return (
-    <div className="hidden md:flex flex-col flex-shrink-0">
-      <div className="flex items-center gap-2 px-5 py-3 bg-white">
-      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
+  // 标题栏内容（PC 和移动端共享）
+  const headerContent = (
+    <>
+      <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} className="md:hidden flex-shrink-0">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </Button>
+      <div className={`w-2 h-2 md:w-2.5 md:h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
       {editing ? (
         <input
           ref={inputRef}
@@ -89,17 +88,37 @@ export function ChatHeader({
           </svg>
         </Button>
       )}
-      </div>
-      {loading ? (
-        <div className="h-px bg-zinc-100">
-          <div
-            className="h-full bg-indigo-400"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      ) : (
-        <div className="h-px bg-zinc-200" />
-      )}
+    </>
+  )
+
+  const done = loadProgress && loadProgress.loaded >= loadProgress.total
+  const progressBar = loading ? (
+    <div className="h-px bg-zinc-100">
+      <div
+        className={`h-full ${done ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
+  ) : (
+    <div className="h-px bg-zinc-200" />
+  )
+
+  return (
+    <>
+      {/* PC 端 */}
+      <div className="hidden md:flex flex-col flex-shrink-0">
+        <div className="flex items-center gap-2 px-5 py-3 bg-white">
+          {headerContent}
+        </div>
+        {progressBar}
+      </div>
+      {/* 移动端 */}
+      <div className="flex md:hidden flex-col flex-shrink-0 bg-white">
+        <div className="flex items-center gap-2 px-4 py-3">
+          {headerContent}
+        </div>
+        {progressBar}
+      </div>
+    </>
   )
 }

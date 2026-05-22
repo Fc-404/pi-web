@@ -1,7 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sidebar } from './components/Sidebar'
-import { ChatArea } from './components/ChatArea'
+import { ChatHeader } from './components/ChatHeader'
+import { ChatMessages } from './components/ChatMessages'
+import { ChatInput } from './components/ChatInput'
+import { ChatContextProvider } from './hooks/useChatContext'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { useSessions } from './hooks/useSessions'
 import { usePoolStatus } from './hooks/usePoolStatus'
@@ -9,11 +12,10 @@ import { useChat } from './hooks/useChat'
 import { useSessionActions } from './hooks/useSessionActions'
 import { openSession, fetchSessionMessages, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo, type PoolStatus } from './lib/api'
 import { useToast } from './components/Toast'
-import { SettingsPanel, useSettings } from './components/SettingsPanel'
+import { SettingsPanel } from './components/SettingsPanel'
 
 function App() {
   const { showToast } = useToast()
-  const settings = useSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
@@ -52,6 +54,15 @@ function App() {
     setPoolStatus(prev => ({ ...prev, [file]: status }))
   }, [setPoolStatus])
 
+  // 通用：带进度 + 完成绿色延迟 800ms 的消息加载
+  const loadWithProgress = useCallback(async (file: string) => {
+    const msgs = await fetchSessionMessagesWithProgress(file, (loaded, total) => {
+      setLoadProgress({ loaded, total })
+    })
+    setLoadProgress({ loaded: 1, total: 1 })
+    return msgs
+  }, [])
+
   const actions = useSessionActions(poolStatus, onMessagesLoaded, onStatusUpdate)
 
   // 点击会话
@@ -69,18 +80,16 @@ function App() {
         body: JSON.stringify({ sessionFile: session.file }),
       })
       try {
-        const msgs = await fetchSessionMessagesWithProgress(session.file, (loaded, total) => {
-          setLoadProgress({ loaded, total })
-        })
+        const msgs = await loadWithProgress(session.file)
         onMessagesLoaded(msgs)
       } catch (err: any) {
         setError(err.message)
       }
-      // 先让进度条到 100%，延迟一下再消失
-      setLoadProgress({ loaded: 1, total: 1 })
-      await new Promise(r => setTimeout(r, 600))
-      setSwitchingId(null)
-      setLoadProgress(null)
+      // 进度到 100% 变绿，延迟 800ms 再消失
+      setTimeout(() => {
+        setSwitchingId(null)
+        setLoadProgress(null)
+      }, 800)
       setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50)
       return
     }
@@ -94,7 +103,7 @@ function App() {
     }
     setSwitchingId(null)
     setLoadProgress(null)
-  }, [poolStatus, onMessagesLoaded, setPoolStatus, setError, clearMessages])
+  }, [poolStatus, onMessagesLoaded, setPoolStatus, setError, clearMessages, loadWithProgress])
 
   // 新建会话
   const handleNewSession = useCallback(async () => {
@@ -172,18 +181,17 @@ function App() {
     if (loading || !activeId || !activeSession || chatMessages.length > 0 || autoLoadedRef.current) return
     autoLoadedRef.current = true
     setAutoLoading(true)
-    fetchSessionMessagesWithProgress(activeId, (loaded, total) => {
-      setLoadProgress({ loaded, total })
-    }).then(msgs => {
+    loadWithProgress(activeId).then(msgs => {
       if (msgs.length > 0) replaceMessages(msgs)
-    }).catch(() => {}).finally(() => {
-      setLoadProgress({ loaded: 1, total: 1 })
       setTimeout(() => {
         setAutoLoading(false)
         setLoadProgress(null)
-      }, 600)
+      }, 800)
+    }).catch(() => {
+      setAutoLoading(false)
+      setLoadProgress(null)
     })
-  }, [loading, activeId, activeSession, chatMessages.length, replaceMessages])
+  }, [loading, activeId, activeSession, chatMessages.length, replaceMessages, loadWithProgress])
 
   // 获取当前思考级别 + 上下文使用情况
   useEffect(() => {
@@ -273,20 +281,6 @@ function App() {
           }
         }}
         activeId={activeId}
-        thinkingDefaultOpen={settings.thinkingDefaultOpen}
-        onThinkingDefaultOpenChange={settings.setThinkingDefaultOpen}
-        toolCallDefaultOpen={settings.toolCallDefaultOpen}
-        onToolCallDefaultOpenChange={settings.setToolCallDefaultOpen}
-        showFooterTime={settings.showFooterTime}
-        onShowFooterTimeChange={settings.setShowFooterTime}
-        showFooterInput={settings.showFooterInput}
-        onShowFooterInputChange={settings.setShowFooterInput}
-        showFooterOutput={settings.showFooterOutput}
-        onShowFooterOutputChange={settings.setShowFooterOutput}
-        showFooterCache={settings.showFooterCache}
-        onShowFooterCacheChange={settings.setShowFooterCache}
-        showFooterCost={settings.showFooterCost}
-        onShowFooterCostChange={settings.setShowFooterCost}
       />
 
       {/* 新建遮罩 */}
@@ -299,66 +293,17 @@ function App() {
         </div>
       )}
 
-      {/* 移动端顶部导航 */}
-      <header className="md:hidden flex flex-col flex-shrink-0 z-30 bg-white">
-      <div className="flex items-center gap-2 px-4 py-3">
-        <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </Button>
-        <div className="flex-1 flex items-center gap-1.5 min-w-0">
-          {activeSession && (
-            <>
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                streaming ? 'animate-pulse bg-emerald-400'
-                : activeStatus === 'starting' ? 'animate-pulse bg-amber-400'
-                : activeStatus === 'ready' ? 'bg-emerald-500'
-                : 'bg-zinc-300'
-              }`} />
-              <span className="text-sm font-medium text-zinc-700 truncate">
-                {activeStatus === 'starting' ? '启动中...' : title}
-              </span>
-              {title && (
-                <button
-                  onClick={() => {
-                    const name = window.prompt('修改标题', title)
-                    if (name && name.trim() && name.trim() !== title) handleRename(name.trim())
-                  }}
-                  className="text-zinc-300 hover:text-zinc-500 transition-colors flex-shrink-0"
-                  title="修改标题"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
-              )}
-            </>
-          )}
-          {!activeSession && (
-            <span className="text-sm text-zinc-400">pi-web</span>
-          )}
-        </div>
-        {activeSession && (
-          <Button variant="ghost" size="icon-sm" onClick={handleOpenSettings} className="flex-shrink-0" title="设置">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      {/* 移动端顶部导航（仅无活跃会话时显示，有会话时由 ChatHeader 接管） */}
+      {!activeSession && (
+        <header className="flex md:hidden items-center gap-2 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">
+          <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </Button>
-        )}
-      </div>
-      {isLoading ? (
-        <div className="h-px bg-zinc-100">
-          <div
-            className="h-full bg-indigo-400"
-            style={{ width: `${loadProgress ? Math.min((loadProgress.loaded / loadProgress.total) * 100, 100) : 0}%` }}
-          />
-        </div>
-      ) : (
-        <div className="h-px bg-zinc-200" />
+          <span className="text-sm text-zinc-400">pi-web</span>
+        </header>
       )}
-      </header>
 
       <div className="flex flex-1 overflow-hidden relative">
         <Sidebar
@@ -380,29 +325,34 @@ function App() {
 
         <main className="flex-1 flex flex-col min-w-0">
           {activeId ? (
-            <ChatArea
-              activeStatus={activeStatus}
-              title={title}
-              messages={chatMessages}
-              streaming={streaming}
-              error={error}
-              input={input}
-              onInputChange={setInput}
-              onSend={handleSend}
-              onStop={stopGeneration}
-              onRename={handleRename}
-              loading={isLoading}
-              loadingLabel={isLoading ? (
+            <ChatContextProvider value={{
+              messages: chatMessages,
+              streaming,
+              chatError: error,
+              activeStatus: activeStatus,
+              loading: isLoading,
+              loadProgress,
+              thinkingLevel,
+              contextUsed,
+              contextWindow,
+              input,
+              title,
+              onInputChange: setInput,
+              onSend: handleSend,
+              onStop: stopGeneration,
+              onRename: handleRename,
+              onOpenSettings: handleOpenSettings,
+              onToggleSidebar: () => setSidebarOpen(v => !v),
+              loadingLabel: isLoading ? (
                 loadProgress
                   ? `正在加载 ${(loadProgress.loaded / 1024).toFixed(0)}KB / ${(loadProgress.total / 1024).toFixed(0)}KB`
                   : '正在加载...'
-              ) : undefined}
-              onOpenSettings={handleOpenSettings}
-              thinkingLevel={thinkingLevel}
-              contextUsed={contextUsed}
-              contextWindow={contextWindow}
-              loadProgress={loadProgress}
-            />
+              ) : undefined,
+            }}>
+              <ChatHeader />
+              <ChatMessages />
+              <ChatInput />
+            </ChatContextProvider>
           ) : (
             <div className="hidden md:flex flex-1 items-center justify-center">
               <div className="text-center">

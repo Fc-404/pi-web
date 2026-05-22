@@ -1,22 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { HistoryMessage, PoolStatus } from '../lib/api'
+import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
+import { useChatContext } from '../hooks/useChatContext'
 
-export function ChatMessages({
-  messages,
-  streaming,
-  error,
-  activeStatus,
-  loading,
-  loadingLabel,
-}: {
-  messages: HistoryMessage[]
-  streaming: boolean
-  error: string | null
-  activeStatus?: PoolStatus
-  loading?: boolean
-  loadingLabel?: ReactNode
-}) {
+export function ChatMessages() {
+  const { messages, streaming, chatError: error, activeStatus, loading, loadingLabel } = useChatContext()
   const scrollRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)

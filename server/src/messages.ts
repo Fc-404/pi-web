@@ -19,7 +19,7 @@ export interface Usage {
 }
 
 export interface HistoryMessage {
-  role: 'user' | 'assistant' | 'toolCall' | 'toolResult'
+  role: 'user' | 'assistant' | 'toolCall' | 'toolResult' | 'system'
   content: string
   thinking?: string
   toolName?: string     // toolResult 和 toolCall 用
@@ -28,6 +28,7 @@ export interface HistoryMessage {
   usage?: Usage         // assistant 消息的 token 用量
   model?: string        // assistant 消息使用的模型
   timestamp?: number    // 消息时间戳
+  callArgs?: string     // toolResult 对应的调用参数（JSON 字符串），用于显示摘要
 }
 
 /**
@@ -42,11 +43,29 @@ export function getSessionMessages(sessionFile: string): HistoryMessage[] {
   const lines = content.split('\n').filter(l => l.trim())
 
   const messages: HistoryMessage[] = []
+  // 缓存从 assistant 中提取的工具调用参数，key=toolCallId
+  const pendingCallArgs = new Map<string, { args: string; toolName: string }>()
 
   for (const line of lines) {
     try {
       const data = JSON.parse(line)
-      if (data.type !== 'message') continue
+      const type = data.type
+
+      // 非 message 事件 → system 提示
+      if (type === 'model_change') {
+        messages.push({ role: 'system', content: `切换模型: ${data.provider}/${data.modelId}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+      if (type === 'thinking_level_change') {
+        messages.push({ role: 'system', content: `思考模式: ${data.thinkingLevel}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+      if (type === 'session_info') {
+        messages.push({ role: 'system', content: `重命名: ${data.name}`, timestamp: new Date(data.timestamp).getTime() })
+        continue
+      }
+
+      if (type !== 'message') continue
 
       const msg = data.message
       const role = msg.role
@@ -54,10 +73,18 @@ export function getSessionMessages(sessionFile: string): HistoryMessage[] {
       if (role === 'user' || role === 'assistant') {
         let text = ''
         let thinking = ''
+
         for (const c of msg.content || []) {
           if (c.type === 'text') text += c.text || ''
           else if (c.type === 'thinking') thinking += c.thinking || ''
+          else if (c.type === 'toolCall') {
+            const argsStr = typeof c.arguments === 'string' ? c.arguments : JSON.stringify(c.arguments || '')
+            const toolCallId = c.id || ''
+            const toolName = c.name || 'unknown'
+            if (toolCallId) pendingCallArgs.set(toolCallId, { args: argsStr, toolName })
+          }
         }
+
         if (!text && !thinking) continue
 
         const base: HistoryMessage = { role, content: text, thinking: thinking || undefined }
@@ -74,26 +101,30 @@ export function getSessionMessages(sessionFile: string): HistoryMessage[] {
         for (const c of msg.content || []) {
           if (c.type === 'text') text += c.text || ''
         }
+        const entry = msg.toolCallId ? pendingCallArgs.get(msg.toolCallId) : undefined
         messages.push({
           role: 'toolResult',
           content: text || '(no output)',
-          toolName: msg.toolName || 'unknown',
+          toolName: msg.toolName || entry?.toolName || 'unknown',
           toolCallId: msg.toolCallId,
           isError: msg.isError || false,
+          callArgs: entry?.args,
         })
-      } else if (role === 'toolCall') {
-        const funcName = msg.function?.name || msg.toolName || 'unknown'
-        const args = msg.function?.arguments || msg.arguments || ''
-        messages.push({
-          role: 'toolCall',
-          content: typeof args === 'string' ? args : JSON.stringify(args),
-          toolName: funcName,
-          toolCallId: msg.id || msg.toolCallId,
-        })
+        if (msg.toolCallId) pendingCallArgs.delete(msg.toolCallId)
       }
     } catch {
       continue
     }
+  }
+
+  // 未匹配的 toolCall（被中断的工具调用）
+  for (const [, entry] of pendingCallArgs) {
+    messages.push({
+      role: 'toolCall',
+      content: entry.args,
+      toolName: entry.toolName,
+      isError: true,
+    })
   }
 
   return messages

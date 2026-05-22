@@ -15,12 +15,13 @@ export interface SessionGroup {
 }
 
 export interface HistoryMessage {
-  role: 'user' | 'assistant' | 'toolCall' | 'toolResult'
+  role: 'user' | 'assistant' | 'toolCall' | 'toolResult' | 'system'
   content: string
   thinking?: string
   toolName?: string
   toolCallId?: string
   isError?: boolean
+  callArgs?: string  // toolResult 附带的调用参数 JSON
   usage?: {
     input: number
     output: number

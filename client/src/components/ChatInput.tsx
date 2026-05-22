@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, type KeyboardEvent } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { FullscreenInput } from './FullscreenInput'
+import { useChatContext } from '../hooks/useChatContext'
 
 const thinkingColors: Record<string, string> = {
   off: '#d4d4d8',
@@ -11,29 +12,20 @@ const thinkingColors: Record<string, string> = {
   xhigh: '#8b5cf6',
 }
 
-export function ChatInput({
-  value,
-  onChange,
-  onSend,
-  onStop,
-  disabled,
-  streaming,
-  placeholder,
-  thinkingLevel,
-  contextUsed,
-  contextWindow,
-}: {
-  value: string
-  onChange: (val: string) => void
-  onSend: () => void
-  onStop: () => void
-  disabled: boolean
-  streaming: boolean
-  placeholder: string
-  thinkingLevel?: string
-  contextUsed?: number
-  contextWindow?: number
-}) {
+export function ChatInput() {
+  const {
+    input: value,
+    onInputChange: onChange,
+    onSend,
+    onStop,
+    streaming,
+    thinkingLevel,
+    contextUsed,
+    contextWindow,
+    activeStatus,
+  } = useChatContext()
+  const disabled = activeStatus !== 'ready' || streaming
+  const placeholder = activeStatus === 'starting' ? '启动中，暂不能发送消息...' : '输入消息...'
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [fullscreen, setFullscreen] = useState(false)
 

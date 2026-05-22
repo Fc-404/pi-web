@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Sparkles, Wrench } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const THINKING_LEVELS = ['off', 'high', 'xhigh'] as const
@@ -21,7 +20,7 @@ function saveSetting<T>(key: string, val: T) {
   localStorage.setItem(LS_PREFIX + '-' + key, JSON.stringify(val))
 }
 
-export function useSettings() {
+function useSettingsState() {
   const [thinkingDefaultOpen, setThinkingDefaultOpen] = useState(() => loadSetting('thinkingDefaultOpen', false))
   const [toolCallDefaultOpen, setToolCallDefaultOpen] = useState(() => loadSetting('toolCallDefaultOpen', false))
   const [showFooterTime, setShowFooterTime] = useState(() => loadSetting('showFooterTime', true))
@@ -91,40 +90,13 @@ export function SettingsPanel({
   onClose,
   onApply,
   activeId,
-  thinkingDefaultOpen,
-  onThinkingDefaultOpenChange,
-  toolCallDefaultOpen,
-  onToolCallDefaultOpenChange,
-  showFooterTime,
-  onShowFooterTimeChange,
-  showFooterInput,
-  onShowFooterInputChange,
-  showFooterOutput,
-  onShowFooterOutputChange,
-  showFooterCache,
-  onShowFooterCacheChange,
-  showFooterCost,
-  onShowFooterCostChange,
 }: {
   open: boolean
   onClose: () => void
   onApply?: (settings: { modelId: string; thinkingLevel: string }) => void
   activeId?: string | null
-  thinkingDefaultOpen: boolean
-  onThinkingDefaultOpenChange: (v: boolean) => void
-  toolCallDefaultOpen: boolean
-  onToolCallDefaultOpenChange: (v: boolean) => void
-  showFooterTime?: boolean
-  onShowFooterTimeChange?: (v: boolean) => void
-  showFooterInput?: boolean
-  onShowFooterInputChange?: (v: boolean) => void
-  showFooterOutput?: boolean
-  onShowFooterOutputChange?: (v: boolean) => void
-  showFooterCache?: boolean
-  onShowFooterCacheChange?: (v: boolean) => void
-  showFooterCost?: boolean
-  onShowFooterCostChange?: (v: boolean) => void
 }) {
+  const s = useSettingsState()
   const [models, setModels] = useState<ModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [selectedModel, setSelectedModel] = useState('')
@@ -197,7 +169,7 @@ export function SettingsPanel({
           </div>
 
           {/* 内容区 — 上下滑动 */}
-          <ScrollArea className="flex-1 min-h-0 p-5">
+          <div className="flex-1 overflow-y-auto p-5">
           <div className="space-y-6">
 
             {/* === 分组：AI 参数 === */}
@@ -256,14 +228,14 @@ export function SettingsPanel({
                     <Sparkles className="w-4 h-4 text-zinc-400" />
                     思考过程
                   </span>
-                  <Toggle value={thinkingDefaultOpen} onChange={onThinkingDefaultOpenChange} />
+                  <Toggle value={s.thinkingDefaultOpen} onChange={s.setThinkingDefaultOpen} />
                 </label>
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700 flex items-center gap-1.5">
                     <Wrench className="w-4 h-4 text-zinc-400" />
                     工具调用
                   </span>
-                  <Toggle value={toolCallDefaultOpen} onChange={onToolCallDefaultOpenChange} />
+                  <Toggle value={s.toolCallDefaultOpen} onChange={s.setToolCallDefaultOpen} />
                 </label>
               </div>
               <p className="text-[11px] text-zinc-400 mt-2">这些设置会自动保存</p>
@@ -275,30 +247,30 @@ export function SettingsPanel({
               <div className="space-y-3">
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700">时间</span>
-                  <Toggle value={showFooterTime ?? true} onChange={v => onShowFooterTimeChange?.(v)} />
+                  <Toggle value={s.showFooterTime} onChange={s.setShowFooterTime} />
                 </label>
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700">输入(in)</span>
-                  <Toggle value={showFooterInput ?? true} onChange={v => onShowFooterInputChange?.(v)} />
+                  <Toggle value={s.showFooterInput} onChange={s.setShowFooterInput} />
                 </label>
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700">输出(out)</span>
-                  <Toggle value={showFooterOutput ?? true} onChange={v => onShowFooterOutputChange?.(v)} />
+                  <Toggle value={s.showFooterOutput} onChange={s.setShowFooterOutput} />
                 </label>
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700">缓存命中(cache)</span>
-                  <Toggle value={showFooterCache ?? true} onChange={v => onShowFooterCacheChange?.(v)} />
+                  <Toggle value={s.showFooterCache} onChange={s.setShowFooterCache} />
                 </label>
                 <label className="flex items-center justify-between py-2">
                   <span className="text-sm text-zinc-700">花费</span>
-                  <Toggle value={showFooterCost ?? true} onChange={v => onShowFooterCostChange?.(v)} />
+                  <Toggle value={s.showFooterCost} onChange={s.setShowFooterCost} />
                 </label>
               </div>
               <p className="text-[11px] text-zinc-400 mt-2">这些设置会自动保存</p>
             </section>
 
           </div>
-          </ScrollArea>
+          </div>
 
           {/* 底部按钮 */}
           <div className="flex items-center gap-3 px-5 py-4 border-t border-zinc-100 flex-shrink-0">
