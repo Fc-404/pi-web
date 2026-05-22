@@ -5,10 +5,24 @@ import { streamSSE } from 'hono/streaming'
 import { listGroups, create, rename, getMessages, getMessagesIncremental, getContext } from './session-store.js'
 import { piPool } from './pi-pool.js'
 import { pipeChatToSSE } from './chat-stream.js'
+import { authApp, protectApi, JWT_SECRET } from './auth.js'
+import type { JwtVariables } from 'hono/jwt'
 
-const app = new Hono()
+const app = new Hono<{ Variables: JwtVariables }>()
 
 app.use('/api/*', cors())
+
+// ===== 鉴权中间件（放行 login 和 health） =====
+app.use('/api/*', async (c, next) => {
+  if (c.req.path === '/api/auth/login' || c.req.path === '/api/health') {
+    await next()
+    return
+  }
+  return protectApi(c, next)
+})
+
+// 鉴权路由（/api/auth/*）
+app.route('/api/auth', authApp)
 
 // 健康检查
 app.get('/api/health', (c) => c.json({ status: 'ok' }))

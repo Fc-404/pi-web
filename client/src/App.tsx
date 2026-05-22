@@ -11,14 +11,25 @@ import { useSessionManager } from './hooks/useSessionManager'
 import { fetchSessionMessages, fetchSessionMessagesIncremental, fetchSessionMessagesWithProgress, updateSessionSettings, type SessionInfo } from './lib/api'
 import { getSessionCache, setSessionCache } from './lib/db'
 import { LoadingDots } from './components/LoadingDots'
+import { LoginPage } from './components/LoginPage'
+import { ConfigPage } from './components/ConfigPage'
 import { useToast } from './components/Toast'
 import { SettingsPanel } from './components/SettingsPanel'
+import { isLoggedIn } from './lib/auth'
+import { setOnUnauthorized } from './lib/api'
 
 function App() {
   const { showToast } = useToast()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn())
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), [])
   const handleCloseSettings = useCallback(() => setSettingsOpen(false), [])
+
+  // 注册 401 回调
+  useEffect(() => {
+    setOnUnauthorized(() => setLoggedIn(false))
+  }, [])
 
   // ── 会话管理（聚合层） ──
   const {
@@ -241,6 +252,12 @@ function App() {
     ? (activeSession.title.length > 9 ? activeSession.title.slice(0, 8) + '...' : activeSession.title)
     : ''
 
+  // 未登录 → 登录页
+  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
+
+  // 配置页
+  if (configOpen) return <ConfigPage onClose={() => setConfigOpen(false)} />
+
   if (sessionsLoading) return (
     <div className="h-dvh bg-zinc-50 flex items-center justify-center">
       <div className="text-zinc-400 animate-pulse">加载中...</div>
@@ -314,6 +331,7 @@ function App() {
           onCloseAll={handleCloseAll}
           onCloseSidebar={() => setSidebarOpen(false)}
           onClose={handleCloseSession}
+          onOpenConfig={() => setConfigOpen(true)}
         />
 
         <main className="flex-1 flex flex-col min-w-0">

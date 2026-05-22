@@ -12,10 +12,43 @@ export type SessionGroup = _SessionGroup
 export type HistoryMessage = _HistoryMessage
 export type PoolStatus = _SessionStatus
 
+// ===== 统一请求封装（自动带 token + 处理 401） =====
+
+import { getToken, clearToken } from './auth'
+
+/** 由 App.tsx 设置，收到 401 时跳转登录页 */
+export let onUnauthorized: (() => void) | null = null
+
+export function setOnUnauthorized(fn: () => void) {
+  onUnauthorized = fn
+}
+
+async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string> || {}),
+  }
+  // 避免覆盖 Content-Type
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (!headers['Content-Type'] && options?.method !== 'GET' && options?.method !== undefined) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  const res = await fetch(url, { ...options, headers })
+
+  if (res.status === 401) {
+    clearToken()
+    onUnauthorized?.()
+    throw new Error('登录已过期')
+  }
+
+  return res
+}
+
 // ===== API 调用 =====
 
 export async function fetchSessions(): Promise<SessionGroup[]> {
-  const res = await fetch('/api/sessions')
+  const res = await apiFetch('/api/sessions')
   const data = await res.json()
   return data.groups
 }
@@ -24,7 +57,7 @@ export async function fetchSessionStatus(): Promise<{
   statuses: Array<{ file: string; status: PoolStatus }>
   activeId: string | null
 }> {
-  const res = await fetch('/api/sessions/status')
+  const res = await apiFetch('/api/sessions/status')
   return res.json()
 }
 
@@ -32,9 +65,8 @@ export async function openSession(sessionFile: string): Promise<{
   messages: HistoryMessage[]
   status: PoolStatus
 }> {
-  const res = await fetch('/api/sessions/open', {
+  const res = await apiFetch('/api/sessions/open', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionFile }),
   })
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
@@ -42,31 +74,28 @@ export async function openSession(sessionFile: string): Promise<{
 }
 
 export async function switchSession(sessionFile: string): Promise<void> {
-  await fetch('/api/sessions/switch', {
+  await apiFetch('/api/sessions/switch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionFile }),
   })
 }
 
 export async function closeSession(sessionFile: string): Promise<void> {
-  await fetch('/api/sessions/close', {
+  await apiFetch('/api/sessions/close', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionFile }),
   })
 }
 
 export async function deleteSession(sessionFile: string): Promise<void> {
-  await fetch('/api/sessions/delete', {
+  await apiFetch('/api/sessions/delete', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionFile }),
   })
 }
 
 export async function closeAllSessions(): Promise<void> {
-  await fetch('/api/sessions/close-all', { method: 'POST' })
+  await apiFetch('/api/sessions/close-all', { method: 'POST' })
 }
 
 export async function newSession(): Promise<{
@@ -75,7 +104,7 @@ export async function newSession(): Promise<{
   messages: HistoryMessage[]
   status: PoolStatus
 }> {
-  const res = await fetch('/api/sessions/new', { method: 'POST' })
+  const res = await apiFetch('/api/sessions/new', { method: 'POST' })
   if (!res.ok) throw new Error('Failed to create session')
   return res.json()
 }
@@ -87,7 +116,7 @@ export interface IncrementalResult {
 }
 
 export async function fetchSessionMessages(sessionFile: string): Promise<HistoryMessage[]> {
-  const res = await fetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
+  const res = await apiFetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
   const data = await res.json()
   return data.messages || []
@@ -104,7 +133,7 @@ export async function fetchSessionMessagesIncremental(
   let url = `/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`
   // 保护：只有有效时才拼接 since 参数
   if (since !== undefined && !isNaN(since) && since >= 0) url += `&since=${since}`
-  const res = await fetch(url)
+  const res = await apiFetch(url)
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
   return res.json()
 }
@@ -113,7 +142,7 @@ export async function fetchSessionMessagesWithProgress(
   sessionFile: string,
   onProgress: (loaded: number, total: number) => void
 ): Promise<HistoryMessage[]> {
-  const res = await fetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
+  const res = await apiFetch(`/api/sessions/messages?file=${encodeURIComponent(sessionFile)}`)
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
 
   const total = parseInt(res.headers.get('Content-Length') || '0', 10)
@@ -152,9 +181,8 @@ export async function updateSessionSettings(sessionFile: string, settings: {
   modelId?: string
   thinkingLevel?: string
 }): Promise<void> {
-  const res = await fetch('/api/sessions/settings', {
+  const res = await apiFetch('/api/sessions/settings', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionFile, ...settings }),
   })
   if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
