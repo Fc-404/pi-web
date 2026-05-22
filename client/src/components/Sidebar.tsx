@@ -22,7 +22,7 @@ function displayTitle(title: string): string {
 /** 侧栏内部内容（桌面端和移动端共享） */
 function SidebarContent({
   groups, collapsedGroups, poolStatus, activeId, switchingId, totalSessions,
-  onToggleGroup, onSessionClick, onDelete, onNew, onCloseAll, onCloseSidebar, onClose, onOpenConfig,
+  onToggleGroup, onSessionClick, onDelete, onNew, onCloseAll, onCloseSidebar, onClose, onToggleConfig, isConfig,
 }: {
   groups: SessionGroup[]
   collapsedGroups: Set<string>
@@ -37,7 +37,8 @@ function SidebarContent({
   onCloseAll: () => void
   onCloseSidebar: () => void
   onClose: (sessionFile: string) => void
-  onOpenConfig: () => void
+  onToggleConfig: () => void
+  isConfig: boolean
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -46,7 +47,9 @@ function SidebarContent({
         <h1 className="text-base font-semibold text-zinc-800">PI WEB</h1>
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-400">{totalSessions}</span>
-          <Button variant="ghost" size="icon-sm" onClick={onOpenConfig} title="配置">
+          <Button variant="ghost" size="icon-sm" onClick={onToggleConfig} title={isConfig ? '返回聊天' : '配置'}
+            className={isConfig ? 'text-indigo-500' : ''}
+          >
             <Wrench className="w-4 h-4" />
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={onCloseSidebar} className="md:hidden">
@@ -170,6 +173,7 @@ export function Sidebar({
   switchingId,
   totalSessions,
   sidebarOpen,
+  isConfig,
   onToggleGroup,
   onSessionClick,
   onDelete,
@@ -177,7 +181,7 @@ export function Sidebar({
   onCloseAll,
   onCloseSidebar,
   onClose,
-  onOpenConfig,
+  onToggleConfig,
 }: {
   groups: SessionGroup[]
   collapsedGroups: Set<string>
@@ -186,6 +190,7 @@ export function Sidebar({
   switchingId: string | null
   totalSessions: number
   sidebarOpen: boolean
+  isConfig: boolean
   onToggleGroup: (dir: string) => void
   onSessionClick: (session: SessionInfo) => void
   onDelete: (file: string) => void
@@ -193,11 +198,11 @@ export function Sidebar({
   onCloseAll: () => void
   onCloseSidebar: () => void
   onClose: (sessionFile: string) => void
-  onOpenConfig: () => void
+  onToggleConfig: () => void
 }) {
   const sidebarProps = {
     groups, collapsedGroups, poolStatus, activeId, switchingId, totalSessions,
-    onToggleGroup, onSessionClick, onDelete, onNew, onCloseAll, onCloseSidebar, onClose, onOpenConfig,
+    onToggleGroup, onSessionClick, onDelete, onNew, onCloseAll, onCloseSidebar, onClose, onToggleConfig, isConfig,
   }
 
   return (
